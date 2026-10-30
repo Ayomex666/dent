@@ -1,0 +1,21 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[[redirects]]
+  # Пускаем запросы на админку в папку admin
+  from = "/admin/*"
+  to = "/admin/:splat"
+  status = 200
+
+[[redirects]]
+  # Если кто-то просто зайдет на /admin, открыть index.html внутри админки
+  from = "/admin"
+  to = "/admin/index.html"
+  status = 200
+
+[[redirects]]
+  # Все остальные пути отправить на главную index.html, чтобы ссылки не ломались
+  from = "/*"
+  to = "/index.html"
+  status = 200

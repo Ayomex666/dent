@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>DentaPRO — Настройка базы данных</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+  * { box-sizing: border-box; margin:0; padding:0; }
+  body {
+    background: #0a0f1e;
+    color: #f1f5f9;
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+    padding: 40px 20px;
+  }
+  .container { max-width: 700px; margin: 0 auto; }
+  h1 {
+    font-size: 32px;
+    font-weight: 800;
+    background: linear-gradient(135deg, #60a5fa, #22d3ee);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 8px;
+  }
+  .subtitle { color: #94a3b8; font-size: 16px; margin-bottom: 32px; }
+  .step {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 16px;
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+  .step-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #3b82f6, #06b6d4);
+    color: white;
+    font-weight: 700;
+    font-size: 14px;
+    margin-bottom: 12px;
+  }
+  .step h3 { font-size: 17px; font-weight: 700; margin-bottom: 8px; }
+  .step p { color: #94a3b8; font-size: 14px; line-height: 1.6; }
+  .step a { color: #60a5fa; }
+  pre {
+    background: #0f172a;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+    padding: 16px;
+    margin: 12px 0;
+    overflow-x: auto;
+    font-size: 13px;
+    color: #22d3ee;
+    line-height: 1.6;
+    font-family: monospace;
+  }
+  .btn {
+    display: inline-block;
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    color: white;
+    padding: 12px 24px;
+    border-radius: 10px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 15px;
+    margin-top: 16px;
+    box-shadow: 0 4px 15px rgba(59,130,246,0.4);
+  }
+  .success-box {
+    background: rgba(16,185,129,0.1);
+    border: 1px solid rgba(16,185,129,0.3);
+    border-radius: 12px;
+    padding: 16px 20px;
+    color: #10b981;
+    font-weight: 600;
+    margin-top: 16px;
+  }
+  .warning-box {
+    background: rgba(245,158,11,0.1);
+    border: 1px solid rgba(245,158,11,0.3);
+    border-radius: 12px;
+    padding: 16px 20px;
+    color: #f59e0b;
+    margin-top: 16px;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🦷 DentaPRO</h1>
+  <p class="subtitle">Руководство по настройке базы данных Supabase</p>
+
+  <div class="step">
+    <div class="step-num">1</div>
+    <h3>Откройте Supabase SQL Editor</h3>
+    <p>Перейдите в ваш проект Supabase и нажмите на иконку <strong>SQL Editor</strong> в левом меню (значок &lt;/&gt; или &quot;SQL&quot;).</p>
+    <p style="margin-top:8px;">Ссылка: <a href="https://supabase.com/dashboard/project/zaudyvlmxsptjinnweve/sql/new" target="_blank">https://supabase.com/dashboard/project/zaudyvlmxsptjinnweve/sql/new</a></p>
+  </div>
+
+  <div class="step">
+    <div class="step-num">2</div>
+    <h3>Скопируйте и вставьте SQL</h3>
+    <p>Нажмите кнопку ниже, откройте файл <code>supabase_setup.sql</code>, скопируйте весь код и вставьте в SQL Editor:</p>
+    <pre>-- Нажмите "New query" в SQL Editor
+-- Вставьте весь код из файла supabase_setup.sql
+-- Нажмите "Run" (Ctrl+Enter)</pre>
+    <div class="warning-box">
+      ⚠️ Файл supabase_setup.sql находится в папке с приложением (рядом с index.html)
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">3</div>
+    <h3>Нажмите "Run"</h3>
+    <p>После вставки кода нажмите зелёную кнопку <strong>Run</strong> или нажмите <strong>Ctrl+Enter</strong>. Вы должны увидеть сообщение об успехе.</p>
+    <div class="success-box">✅ "Success. No rows returned" — это нормально, всё работает!</div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">4</div>
+    <h3>Откройте приложение</h3>
+    <p>После успешного выполнения SQL — откройте файл <strong>index.html</strong> в браузере Google Chrome или Microsoft Edge.</p>
+    <p style="margin-top:12px; font-weight:600; color:#60a5fa;">Данные для входа администратора:</p>
+    <pre>Email:   shukurovayom8@gmail.com
+Пароль:  29082009</pre>
+  </div>
+
+  <a href="index.html" class="btn">🦷 Открыть DentaPRO</a>
+
+  <div style="margin-top:32px; padding:20px; background:rgba(255,255,255,0.03); border-radius:12px;">
+    <p style="color:#64748b; font-size:13px; line-height:1.7;">
+      <strong style="color:#94a3b8;">Важно:</strong> Приложение требует подключения к интернету для синхронизации данных между устройствами. Данные автоматически синхронизируются при каждом открытии и каждые 2 часа в фоне.
+    </p>
+  </div>
+</div>
+</body>
+</html>

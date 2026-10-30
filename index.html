@@ -1,374 +1,567 @@
 <!DOCTYPE html>
 <html lang="ru">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="DentaCare">
-    <meta name="theme-color" content="#0a0e1a">
-    <meta name="description"
-        content="Приложение для управления пациентами стоматологии — запись визитов, процедур, фотографий и стоимости">
-    <title>DentaCare — Стоматологический журнал</title>
-    <link rel="manifest" href="manifest.json">
-    <link rel="apple-touch-icon" href="icons/icon-192.png">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
-        rel="stylesheet">
-    <link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#0a0f1e" />
+  <title>DentaPRO — Стоматологическая система</title>
+  <meta name="description" content="DentaPRO — профессиональная система управления стоматологической клиникой" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
 </head>
-
 <body>
-    <!-- Main App Container -->
-    <div id="app" class="app">
-        <!-- Header -->
-        <header id="main-header" class="header">
-            <div class="header-content">
-                <div class="header-left">
-                    <button id="back-btn" class="header-btn hidden" onclick="goBack()">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="15 18 9 12 15 6"></polyline>
-                        </svg>
-                    </button>
-                    <h1 id="header-title" class="header-title">DentaCare</h1>
-                </div>
-                <div class="header-right">
-                    <button id="search-toggle-btn" class="header-btn" onclick="toggleSearch()">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="11" cy="11" r="8"></circle>
-                            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                        </svg>
-                    </button>
-                </div>
+
+<!-- ============ NO INTERNET OVERLAY ============ -->
+<div id="no-internet-overlay" class="overlay hidden">
+  <div class="overlay-card">
+    <div class="overlay-icon">📡</div>
+    <h2>Нет подключения</h2>
+    <p>DentaPRO требует подключения к интернету для синхронизации данных между устройствами.</p>
+    <button onclick="checkInternet()" class="btn-primary">Повторить</button>
+  </div>
+</div>
+
+<!-- ============ BLOCKED OVERLAY ============ -->
+<div id="blocked-overlay" class="overlay hidden">
+  <div class="overlay-card">
+    <div class="overlay-icon">🚫</div>
+    <h2>Аккаунт заблокирован</h2>
+    <p>Ваш аккаунт заблокирован администратором. Обратитесь к администратору для разблокировки.</p>
+    <button onclick="logout()" class="btn-secondary">Выйти</button>
+  </div>
+</div>
+
+<!-- ============ APP CONTAINER ============ -->
+<div id="app">
+
+  <!-- ===== LOGIN PAGE ===== -->
+  <div id="page-login" class="page active">
+    <div class="login-bg">
+      <div class="login-blob blob-1"></div>
+      <div class="login-blob blob-2"></div>
+      <div class="login-blob blob-3"></div>
+    </div>
+    <div class="login-container">
+      <div class="login-logo">
+        <div class="logo-icon">🦷</div>
+        <h1 class="logo-text">DentaPRO</h1>
+        <p class="logo-sub">Система управления клиникой</p>
+      </div>
+      <div class="login-card glass-card">
+        <h2 class="card-title">Добро пожаловать</h2>
+        <p class="card-sub">Войдите в свой аккаунт</p>
+        <form id="login-form" onsubmit="handleLogin(event)">
+          <div class="form-group">
+            <label class="form-label">Email</label>
+            <input id="login-email" type="email" class="form-input" placeholder="doctor@clinic.com" required autocomplete="email" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Пароль</label>
+            <div class="input-wrap">
+              <input id="login-password" type="password" class="form-input" placeholder="••••••••" required autocomplete="current-password" />
+              <button type="button" class="eye-btn" onclick="togglePassword('login-password', this)">👁</button>
             </div>
-            <!-- Search Bar -->
-            <div id="search-bar" class="search-bar hidden">
-                <div class="search-input-wrapper">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                        stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="11" cy="11" r="8"></circle>
-                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                    </svg>
-                    <input id="search-input" type="text" placeholder="Поиск пациента..."
-                        oninput="searchPatients(this.value)">
-                    <button class="search-clear" onclick="clearSearch()">✕</button>
-                </div>
-            </div>
-        </header>
+          </div>
+          <div id="login-error" class="error-msg hidden"></div>
+          <button type="submit" id="login-btn" class="btn-primary full-width" style="margin-top:16px;">
+            <span id="login-btn-text">Войти</span>
+            <span id="login-spinner" class="spinner hidden"></span>
+          </button>
+        </form>
+        <div class="forgot-wrap">
+          <button onclick="showForgotModal()" class="forgot-link">Забыли пароль?</button>
+        </div>
+      </div>
+      <p class="login-version">DentaPRO v1.0 • Защищённое соединение 🔒</p>
+    </div>
+  </div>
 
-        <!-- Pages Container -->
-        <main id="pages-container" class="pages-container">
-
-            <section id="page-patients" class="page active">
-                <!-- Stats Cards -->
-                <div class="stats-grid">
-                    <div class="stat-card stat-total">
-                        <div class="stat-icon">👥</div>
-                        <div class="stat-info">
-                            <span class="stat-value" id="stat-total">0</span>
-                            <span class="stat-label">Всего</span>
-                        </div>
-                    </div>
-                    <div class="stat-card stat-active">
-                        <div class="stat-icon">🔄</div>
-                        <div class="stat-info">
-                            <span class="stat-value" id="stat-active">0</span>
-                            <span class="stat-label">Активные</span>
-                        </div>
-                    </div>
-                    <div class="stat-card stat-completed">
-                        <div class="stat-icon">✅</div>
-                        <div class="stat-info">
-                            <span class="stat-value" id="stat-completed">0</span>
-                            <span class="stat-label">Завершённые</span>
-                        </div>
-                    </div>
-                    <div class="stat-card stat-revenue">
-                        <div class="stat-icon">💰</div>
-                        <div class="stat-info">
-                            <span class="stat-value" id="stat-revenue">0</span>
-                            <span class="stat-label">Доход</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Filter Tabs -->
-                <div class="filter-tabs">
-                    <button class="filter-tab active" data-filter="all" onclick="filterPatients('all', this)">
-                        Все
-                    </button>
-                    <button class="filter-tab" data-filter="active" onclick="filterPatients('active', this)">
-                        Активные
-                    </button>
-                    <button class="filter-tab" data-filter="completed" onclick="filterPatients('completed', this)">
-                        Завершённые
-                    </button>
-                </div>
-
-                <!-- Patient List -->
-                <div id="patients-list" class="patients-list">
-                    <!-- Patients will be rendered here -->
-                </div>
-
-                <!-- Empty State -->
-                <div id="empty-state" class="empty-state hidden">
-                    <div class="empty-icon">🦷</div>
-                    <h3>Нет пациентов</h3>
-                    <p>Нажмите «+» чтобы добавить первого пациента</p>
-                </div>
-            </section>
-
-            <!-- Page: Add/Edit Patient -->
-            <section id="page-add-patient" class="page">
-                <div class="form-container">
-                    <h2 class="form-title" id="form-title">Новый пациент</h2>
-
-                    <div class="form-group">
-                        <label class="form-label">Фотография</label>
-                        <div class="photo-upload" id="photo-upload-area"
-                            onclick="document.getElementById('photo-input').click()">
-                            <div id="photo-preview" class="photo-preview">
-                                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                    stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                                    <circle cx="8.5" cy="8.5" r="1.5"></circle>
-                                    <polyline points="21 15 16 10 5 21"></polyline>
-                                </svg>
-                                <span>Нажмите для загрузки</span>
-                            </div>
-                            <input type="file" id="photo-input" accept="image/*" capture="environment"
-                                onchange="handlePhotoUpload(event)" style="display:none">
-                        </div>
-                    </div>
-
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label" for="patient-firstname">Имя *</label>
-                            <input type="text" id="patient-firstname" class="form-input" placeholder="Введите имя"
-                                required>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label" for="patient-lastname">Фамилия *</label>
-                            <input type="text" id="patient-lastname" class="form-input" placeholder="Введите фамилию"
-                                required>
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label" for="patient-age">Возраст (лет) *</label>
-                        <input type="number" id="patient-age" class="form-input" placeholder="Например, 35" min="1"
-                            max="120" required>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label" for="patient-phone">Телефон</label>
-                        <input type="tel" id="patient-phone" class="form-input" placeholder="+992 XX XXX XX XX">
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label" for="patient-referral">Откуда пришёл</label>
-                        <input type="text" id="patient-referral" class="form-input"
-                            placeholder="Рекомендация, реклама, интернет...">
-                    </div>
-
-                    <div class="form-group" id="patient-visit-date-group">
-                        <label class="form-label" for="patient-visit-date">Дата визита *</label>
-                        <input type="date" id="patient-visit-date" class="form-input" required>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label" for="patient-treatment-type">Тип лечения</label>
-                        <select id="patient-treatment-type" class="form-input"
-                            onchange="toggleCustomTreatment(this.value)">
-                            <option value="">Выберите тип лечения</option>
-                            <option value="karies">Лечение кариеса</option>
-                            <option value="endodontics">Эндодонтия</option>
-                            <option value="cleaning">Профилактическая чистка</option>
-                            <option value="orthopedics">Ортопедия</option>
-                            <option value="surgery">Хирургия</option>
-                            <option value="custom">✏️ Свой вариант...</option>
-                        </select>
-                        <div id="custom-treatment-wrapper" class="custom-treatment-wrapper hidden">
-                            <input type="text" id="patient-treatment-custom" class="form-input"
-                                placeholder="Напишите свой тип лечения...">
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label">Анализы</label>
-                        <div class="analysis-toggle">
-                            <label class="analysis-option">
-                                <input type="radio" name="patient-analysis" id="analysis-healthy" value="healthy">
-                                <span class="analysis-label analysis-healthy">🟢 Здоров</span>
-                            </label>
-                            <label class="analysis-option">
-                                <input type="radio" name="patient-analysis" id="analysis-sick" value="sick">
-                                <span class="analysis-label analysis-sick">🔴 Болен</span>
-                            </label>
-                            <label class="analysis-option">
-                                <input type="radio" name="patient-analysis" id="analysis-none" value="none" checked>
-                                <span class="analysis-label analysis-none">➖ Не указано</span>
-                            </label>
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label" for="patient-total-cost">Общая сумма (сум)</label>
-                        <input type="number" id="patient-total-cost" class="form-input" placeholder="Введите общую сумму">
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label" for="patient-notes">Заметки</label>
-                        <textarea id="patient-notes" class="form-input form-textarea"
-                            placeholder="Аллергии, особенности..."></textarea>
-                    </div>
-
-                    <button id="save-patient-btn" class="btn btn-primary btn-block" onclick="savePatient()">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-                            <polyline points="17 21 17 13 7 13 7 21"></polyline>
-                            <polyline points="7 3 7 8 15 8"></polyline>
-                        </svg>
-                        Сохранить пациента
-                    </button>
-                </div>
-            </section>
-
-            <!-- Page: Patient Detail -->
-            <section id="page-patient-detail" class="page">
-                <div id="patient-detail-content" class="patient-detail">
-                    <!-- Will be rendered dynamically -->
-                </div>
-            </section>
-
-            <!-- Page: Add Visit -->
-            <section id="page-add-visit" class="page">
-                <div class="form-container">
-                    <h2 class="form-title" id="visit-form-title">Новый визит</h2>
-
-                    <div class="form-group">
-                        <label class="form-label" for="visit-date">Дата визита *</label>
-                        <input type="date" id="visit-date" class="form-input" required>
-                    </div>
-
-                    <!-- Procedures List -->
-                    <div class="form-group">
-                        <div class="form-label-row">
-                            <label class="form-label">Процедуры</label>
-                            <button class="btn-add-small" onclick="addProcedureField()">+ Добавить</button>
-                        </div>
-                        <div id="procedures-list" class="procedures-list">
-                            <!-- Procedure fields will be added here -->
-                        </div>
-                    </div>
-
-                    <!-- Visit Photos -->
-                    <div class="form-group">
-                        <label class="form-label">Фотографии визита</label>
-                        <div class="visit-photos-grid" id="visit-photos-grid">
-                            <div class="visit-photo-add" onclick="document.getElementById('visit-photo-input').click()">
-                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                    stroke-width="1.5">
-                                    <line x1="12" y1="5" x2="12" y2="19"></line>
-                                    <line x1="5" y1="12" x2="19" y2="12"></line>
-                                </svg>
-                                <span>Добавить фото</span>
-                            </div>
-                        </div>
-                        <input type="file" id="visit-photo-input" accept="image/*" capture="environment" multiple
-                            onchange="handleVisitPhotos(event)" style="display:none">
-                    </div>
-
-                    <div class="form-group">
-                        <label class="form-label" for="visit-notes">Заметки к визиту</label>
-                        <textarea id="visit-notes" class="form-input form-textarea"
-                            placeholder="Дополнительные заметки..."></textarea>
-                    </div>
-
-                    <!-- Total Cost Display -->
-                    <div class="total-cost-display">
-                        <span>Общая стоимость:</span>
-                        <span id="total-cost-value" class="total-cost-value">0 сум</span>
-                    </div>
-
-                    <button id="save-visit-btn" class="btn btn-primary btn-block" onclick="saveVisit()">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="20 6 9 17 4 12"></polyline>
-                        </svg>
-                        Сохранить визит
-                    </button>
-                </div>
-            </section>
-        </main>
-
-        <!-- FAB Button -->
-        <button id="fab-btn" class="fab" onclick="navigateTo('page-add-patient')">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                stroke-linecap="round" stroke-linejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
+  <!-- ===== ADMIN PAGE ===== -->
+  <div id="page-admin" class="page">
+    <!-- Admin Header -->
+    <header class="app-header">
+      <div class="header-left">
+        <div class="logo-small">🦷 DentaPRO</div>
+        <span class="header-badge admin-badge">ADMIN</span>
+      </div>
+      <div class="header-right">
+        <button class="icon-btn" onclick="logout()" title="Выйти">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         </button>
+      </div>
+    </header>
 
-        <!-- Bottom Navigation -->
-        <nav class="bottom-nav">
-            <button class="nav-item active" onclick="navigateTo('page-patients'); setActiveNav(this)">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                    <circle cx="9" cy="7" r="4"></circle>
-                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-                </svg>
-                <span>Пациенты</span>
-            </button>
-            <button class="nav-item" onclick="showStats(); setActiveNav(this)">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                    stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="18" y1="20" x2="18" y2="10"></line>
-                    <line x1="12" y1="20" x2="12" y2="4"></line>
-                    <line x1="6" y1="20" x2="6" y2="14"></line>
-                </svg>
-                <span>Статистика</span>
-            </button>
-        </nav>
+    <div class="page-content">
+      <div class="admin-hero">
+        <h2>Панель администратора</h2>
+        <p>Управление стоматологами DentaPRO</p>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-icon">👨‍⚕️</div>
+          <div class="stat-info">
+            <div class="stat-num" id="admin-total-dentists">0</div>
+            <div class="stat-label">Стоматологов</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">✅</div>
+          <div class="stat-info">
+            <div class="stat-num" id="admin-active-dentists">0</div>
+            <div class="stat-label">Активных</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">🚫</div>
+          <div class="stat-info">
+            <div class="stat-num" id="admin-blocked-dentists">0</div>
+            <div class="stat-label">Заблокировано</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-header">
+        <h3 class="section-title">Список стоматологов</h3>
+      </div>
+
+      <div id="admin-dentists-list" class="dentists-list">
+        <div class="loading-state">
+          <div class="loading-spinner"></div>
+          <p>Загрузка...</p>
+        </div>
+      </div>
     </div>
 
-    <!-- Toast Notification -->
-    <div id="toast" class="toast hidden">
-        <span id="toast-message"></span>
-    </div>
+    <!-- Admin Bottom Nav -->
+    <nav class="bottom-nav">
+      <button class="nav-btn active" id="admin-nav-home" onclick="adminNavTo('home')">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        <span>Главная</span>
+      </button>
+      <button class="nav-btn" id="admin-nav-add" onclick="showAddDentistPage()">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        <span>Добавить</span>
+      </button>
+    </nav>
+  </div>
 
-    <!-- Confirm Dialog -->
-    <div id="confirm-dialog" class="dialog-overlay hidden">
-        <div class="dialog">
-            <h3 id="dialog-title" class="dialog-title">Подтверждение</h3>
-            <p id="dialog-message" class="dialog-message"></p>
-            <div class="dialog-actions">
-                <button class="btn btn-secondary" onclick="closeDialog()">Отмена</button>
-                <button id="dialog-confirm-btn" class="btn btn-danger">Удалить</button>
+  <!-- ===== ADD DENTIST PAGE ===== -->
+  <div id="page-add-dentist" class="page">
+    <header class="app-header">
+      <div class="header-left">
+        <button class="back-btn" onclick="showAdminPage()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <h2 class="page-title">Новый стоматолог</h2>
+      </div>
+    </header>
+    <div class="page-content">
+      <div class="form-card glass-card">
+        <form id="add-dentist-form" onsubmit="handleAddDentist(event)">
+          <div class="form-group">
+            <label class="form-label">Полное имя</label>
+            <input id="dentist-name" type="text" class="form-input" placeholder="Иванов Иван Иванович" required />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Email</label>
+            <input id="dentist-email" type="email" class="form-input" placeholder="doctor@clinic.com" required />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Пароль</label>
+            <div class="input-wrap">
+              <input id="dentist-password" type="password" class="form-input" placeholder="Минимум 8 символов" required minlength="8" />
+              <button type="button" class="eye-btn" onclick="togglePassword('dentist-password', this)">👁</button>
             </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Телефон</label>
+            <input id="dentist-phone" type="tel" class="form-input" placeholder="+992 XX XXX XXXX" />
+          </div>
+          <div id="add-dentist-error" class="error-msg hidden"></div>
+          <button type="submit" id="add-dentist-btn" class="btn-primary full-width" style="margin-top:24px;">
+            <span>Добавить стоматолога</span>
+            <span id="add-dentist-spinner" class="spinner hidden"></span>
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== DENTIST DASHBOARD ===== -->
+  <div id="page-dashboard" class="page">
+    <header class="app-header">
+      <div class="header-left">
+        <div class="logo-small">🦷</div>
+        <div class="header-name-wrap">
+          <span id="dentist-display-name" class="header-dentist-name">Доктор</span>
         </div>
+      </div>
+      <div class="header-right">
+        <!-- Notifications Bell -->
+        <button class="icon-btn notif-btn" onclick="toggleNotifications()" id="notif-btn" title="Уведомления">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <span id="notif-badge" class="notif-badge hidden">0</span>
+        </button>
+        <!-- Profile -->
+        <button class="avatar-btn" onclick="showProfileMenu()" id="profile-btn">
+          <div class="avatar-circle" id="header-avatar">А</div>
+        </button>
+      </div>
+    </header>
+
+    <!-- Notifications Dropdown -->
+    <div id="notifications-panel" class="notifications-panel hidden">
+      <div class="notif-header">
+        <h4>Уведомления</h4>
+        <button onclick="toggleNotifications()" class="close-notif">✕</button>
+      </div>
+      <div id="notif-list" class="notif-list">
+        <div class="empty-state">Нет уведомлений</div>
+      </div>
     </div>
 
-    <!-- Photo Viewer -->
-    <div id="photo-viewer" class="photo-viewer hidden" onclick="closePhotoViewer()">
-        <button class="photo-viewer-close" onclick="closePhotoViewer()">✕</button>
-        <div class="photo-viewer-content" onclick="event.stopPropagation()">
-            <img id="photo-viewer-img" src="" alt="Фото">
-            <a id="photo-viewer-download" class="btn btn-primary" style="margin-top: 15px; display: none;" download="photo.png">Скачать фото</a>
+    <!-- Profile Menu -->
+    <div id="profile-menu" class="profile-menu hidden">
+      <div class="profile-menu-header">
+        <div class="avatar-circle-lg" id="menu-avatar">А</div>
+        <div>
+          <div class="menu-name" id="menu-user-name">Доктор</div>
+          <div class="menu-email" id="menu-user-email">-</div>
         </div>
+      </div>
+      <hr class="menu-divider" />
+      <button class="menu-item" onclick="hideProfileMenu(); showPage('page-settings')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        Настройки
+      </button>
+      <button class="menu-item danger" onclick="logout()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        Выйти
+      </button>
+    </div>
+    <div id="profile-overlay" class="profile-overlay hidden" onclick="hideProfileMenu()"></div>
+
+    <div class="page-content no-bottom-padding">
+      <!-- SEARCH -->
+      <div class="search-wrap">
+        <div class="search-box">
+          <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input id="patient-search" type="text" class="search-input" placeholder="Поиск пациентов..." oninput="searchPatients(this.value)" />
+          <button id="search-clear" class="search-clear hidden" onclick="clearSearch()">✕</button>
+        </div>
+      </div>
+
+      <!-- Search Results -->
+      <div id="search-results" class="search-results hidden"></div>
+
+      <!-- HERO BANNER -->
+      <div id="dashboard-content">
+        <div class="hero-banner">
+          <div class="hero-bg-anim"></div>
+          <div class="hero-content">
+            <div class="hero-icon">🦷</div>
+            <div class="hero-stat">
+              <div class="hero-num" id="total-patients-count">0</div>
+              <div class="hero-label">Всего пациентов</div>
+            </div>
+            <div class="hero-divider"></div>
+            <div class="hero-stat">
+              <div class="hero-num" id="today-appointments-count">0</div>
+              <div class="hero-label">Сегодня</div>
+            </div>
+          </div>
+          <div class="hero-wave">
+            <svg viewBox="0 0 400 60" xmlns="http://www.w3.org/2000/svg"><path d="M0 30 Q100 0 200 30 Q300 60 400 30 L400 60 L0 60 Z" fill="rgba(255,255,255,0.05)"/></svg>
+          </div>
+        </div>
+
+        <!-- PATIENTS LIST -->
+        <div class="section-header" style="margin-top:20px;">
+          <h3 class="section-title">Все пациенты</h3>
+          <span id="patients-count-badge" class="count-badge">0</span>
+        </div>
+
+        <div id="patients-list" class="patients-list">
+          <div class="loading-state">
+            <div class="loading-spinner"></div>
+            <p>Загрузка пациентов...</p>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <script src="db.js"></script>
-    <script src="app.js"></script>
+    <!-- Dentist Bottom Nav -->
+    <nav class="bottom-nav">
+      <button class="nav-btn active" id="nav-home" onclick="dentistNavTo('home')">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        <span>Главная</span>
+      </button>
+      <button class="nav-btn" id="nav-add" onclick="showAddPatientPage()">
+        <div class="nav-add-btn">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </div>
+        <span>Добавить</span>
+      </button>
+      <button class="nav-btn" id="nav-settings" onclick="dentistNavTo('settings')">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span>Настройки</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- ===== ADD PATIENT PAGE ===== -->
+  <div id="page-add-patient" class="page">
+    <header class="app-header">
+      <div class="header-left">
+        <button class="back-btn" onclick="showPage('page-dashboard')">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <h2 class="page-title">Новый пациент</h2>
+      </div>
+    </header>
+    <div class="page-content">
+      <form id="add-patient-form" onsubmit="handleAddPatient(event)">
+        <div class="form-card glass-card">
+          <h3 class="form-section-title">Личные данные</h3>
+          <div class="form-group">
+            <label class="form-label">Полное имя *</label>
+            <input id="patient-name" type="text" class="form-input" placeholder="Иванов Иван" required />
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Возраст</label>
+              <input id="patient-age" type="number" class="form-input" placeholder="25" min="1" max="120" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Телефон *</label>
+              <input id="patient-phone" type="tel" class="form-input" placeholder="+992 XX XXX XXXX" required />
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Дата приёма *</label>
+            <input id="patient-visit-date" type="datetime-local" class="form-input" required />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Заметки</label>
+            <textarea id="patient-notes" class="form-input form-textarea" placeholder="Жалобы, наблюдения..."></textarea>
+          </div>
+        </div>
+
+        <div class="form-card glass-card" style="margin-top:16px;">
+          <div class="services-header-row">
+            <h3 class="form-section-title">Услуги</h3>
+            <button type="button" class="btn-add-service" onclick="addServiceRow()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Добавить
+            </button>
+          </div>
+          <div id="services-container">
+            <!-- service rows added dynamically -->
+          </div>
+          <div id="no-services-msg" class="no-services-msg">
+            <div class="no-services-icon">⚙️</div>
+            <p>Вы не добавили свои услуги.</p>
+            <p>Для этого перейдите в <strong>Настройки</strong>.</p>
+            <button type="button" class="btn-secondary" onclick="showPage('page-settings')">Перейти в настройки</button>
+          </div>
+          <div class="total-wrap" id="total-wrap" style="display:none;">
+            <span class="total-label">Итого:</span>
+            <span class="total-amount" id="services-total">0 сом.</span>
+          </div>
+        </div>
+
+        <div id="add-patient-error" class="error-msg hidden"></div>
+        <button type="submit" id="add-patient-btn" class="btn-primary full-width" style="margin: 16px 0 80px;">
+          <span>Сохранить пациента</span>
+          <span id="add-patient-spinner" class="spinner hidden"></span>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===== PATIENT DETAIL PAGE ===== -->
+  <div id="page-patient-detail" class="page">
+    <header class="app-header">
+      <div class="header-left">
+        <button class="back-btn" onclick="showPage('page-dashboard')">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <h2 class="page-title">Карточка пациента</h2>
+      </div>
+      <div class="header-right">
+        <button class="icon-btn danger-icon" onclick="confirmDeletePatient()" title="Удалить">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+        </button>
+      </div>
+    </header>
+    <div class="page-content">
+      <div class="patient-hero glass-card">
+        <div class="patient-avatar-lg" id="detail-avatar">А</div>
+        <div class="patient-hero-info">
+          <h2 id="detail-name">-</h2>
+          <p id="detail-phone" class="detail-phone">-</p>
+          <div class="detail-tags">
+            <span class="detail-tag" id="detail-age-tag">-</span>
+            <span class="detail-tag accent" id="detail-last-visit-tag">-</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="detail-stats glass-card" style="margin-top:16px;">
+        <div class="detail-stat">
+          <div class="detail-stat-icon">📅</div>
+          <div>
+            <div class="detail-stat-label">Всего визитов</div>
+            <div class="detail-stat-val" id="detail-total-visits">0</div>
+          </div>
+        </div>
+        <div class="detail-stat">
+          <div class="detail-stat-icon">💰</div>
+          <div>
+            <div class="detail-stat-label">Общая сумма</div>
+            <div class="detail-stat-val" id="detail-total-amount">0 сом.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-header" style="margin-top:20px;">
+        <h3 class="section-title">История визитов</h3>
+      </div>
+      <div id="detail-visits-list" class="visits-list"></div>
+
+      <button class="btn-primary full-width" style="margin: 16px 0 30px;" onclick="newAppointmentForPatient()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Новый приём
+      </button>
+    </div>
+  </div>
+
+  <!-- ===== SETTINGS PAGE ===== -->
+  <div id="page-settings" class="page">
+    <header class="app-header">
+      <div class="header-left">
+        <button class="back-btn" onclick="showPage('page-dashboard')">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <h2 class="page-title">Настройки</h2>
+      </div>
+    </header>
+    <div class="page-content">
+      <div class="settings-section glass-card">
+        <h3 class="form-section-title">Мои услуги и цены</h3>
+        <p class="settings-desc">Добавьте услуги — они будут доступны при записи пациентов</p>
+
+        <div id="my-services-list"></div>
+
+        <div class="add-service-form">
+          <div class="form-row">
+            <div class="form-group" style="flex:2">
+              <label class="form-label">Название услуги</label>
+              <input id="new-service-name" type="text" class="form-input" placeholder="Удаление зуба" />
+            </div>
+            <div class="form-group" style="flex:1">
+              <label class="form-label">Цена (сом.)</label>
+              <input id="new-service-price" type="number" class="form-input" placeholder="150" min="0" />
+            </div>
+          </div>
+          <button type="button" class="btn-primary" onclick="addMyService()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Добавить услугу
+          </button>
+        </div>
+      </div>
+
+      <div class="settings-section glass-card" style="margin-top:16px;">
+        <h3 class="form-section-title">Мой профиль</h3>
+        <div class="form-group">
+          <label class="form-label">Имя</label>
+          <input id="settings-name" type="text" class="form-input" placeholder="Ваше имя" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Телефон</label>
+          <input id="settings-phone" type="tel" class="form-input" placeholder="+992 XX XXX XXXX" />
+        </div>
+        <button class="btn-primary" onclick="saveProfile()">Сохранить профиль</button>
+      </div>
+
+      <div style="height: 80px;"></div>
+    </div>
+
+    <nav class="bottom-nav">
+      <button class="nav-btn" onclick="dentistNavTo('home')">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        <span>Главная</span>
+      </button>
+      <button class="nav-btn" onclick="showAddPatientPage()">
+        <div class="nav-add-btn">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </div>
+        <span>Добавить</span>
+      </button>
+      <button class="nav-btn active" onclick="dentistNavTo('settings')">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span>Настройки</span>
+      </button>
+    </nav>
+  </div>
+
+</div><!-- end #app -->
+
+<!-- ===== MODALS ===== -->
+
+<!-- Forgot Password Modal -->
+<div id="forgot-modal" class="modal-overlay hidden" onclick="closeForgotModal(event)">
+  <div class="modal-card glass-card">
+    <button class="modal-close" onclick="closeForgotModalBtn()">✕</button>
+    <div class="modal-icon">🔐</div>
+    <h3>Восстановление пароля</h3>
+    <p style="color:#94a3b8; margin:12px 0 20px; line-height:1.6;">
+      Восстановление пароля стоит <strong style="color:#f59e0b;">50 сомони</strong>.<br/>
+      Для восстановления позвоните по номеру:
+    </p>
+    <a href="tel:+992501117679" class="phone-link">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.38 2 2 0 0 1 3.58 1h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 8.8a16 16 0 0 0 6.29 6.29l.91-.91a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+      +992 501 117 679
+    </a>
+    <button class="btn-secondary full-width" style="margin-top:16px;" onclick="closeForgotModalBtn()">Закрыть</button>
+  </div>
+</div>
+
+<!-- Notification Detail Modal -->
+<div id="notif-detail-modal" class="modal-overlay hidden" onclick="closeNotifDetail(event)">
+  <div class="modal-card glass-card">
+    <button class="modal-close" onclick="closeNotifDetailBtn()">✕</button>
+    <div class="modal-icon">📋</div>
+    <h3 id="notif-detail-name">Пациент</h3>
+    <div class="notif-detail-info">
+      <div class="notif-detail-row">
+        <span>📞</span>
+        <span id="notif-detail-phone">-</span>
+      </div>
+      <div class="notif-detail-row">
+        <span>📅</span>
+        <span id="notif-detail-date">-</span>
+      </div>
+      <div class="notif-detail-row">
+        <span>ℹ️</span>
+        <span id="notif-detail-msg">-</span>
+      </div>
+    </div>
+    <button class="btn-primary full-width" style="margin-top:16px;" onclick="closeNotifDetailBtn()">Закрыть</button>
+  </div>
+</div>
+
+<!-- Toast notification -->
+<div id="toast" class="toast hidden"></div>
+
+<!-- Scripts -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="app.js"></script>
 </body>
-
 </html>

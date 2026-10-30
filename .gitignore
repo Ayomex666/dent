@@ -1,0 +1,8 @@
+node_modules
+dist
+.env
+.antigravityignore
+data/
+*.db
+*.sqlite
+*.sqlite3

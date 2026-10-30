@@ -1,1208 +1,993 @@
-// ===== App State =====
-let currentPage = 'page-patients';
-let pageHistory = [];
-let currentFilter = 'all';
-let currentPatientId = null;
-let editingPatientId = null;
-let editingVisitId = null;
-let patientPhoto = null;
-let visitPhotos = [];
-let allPatients = [];
+// ============================================================
+// DentaPRO — Dental Clinic Management System
+// Supabase Auth + RLS version
+// ============================================================
 
-// ===== Init =====
+const SUPABASE_URL = 'https://zaudyvlmxsptjinnweve.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_EsKXpfcMlzcP9A_IY8FqPA_Qp4d4wR9';
+
+// ===== APP STATE =====
+let sb = null;
+let currentUser = null;    // auth user
+let currentProfile = null; // profiles row
+let currentPatient = null;
+let myServices = [];
+let syncInterval = null;
+let notifCurrentId = null;
+
+// ============================================================
+// INIT
+// ============================================================
 document.addEventListener('DOMContentLoaded', async () => {
-    try {
-        await openDatabase();
-        await loadPatients();
-    } catch (err) {
-        console.error('Init error:', err);
-        alert('Ошибка инициализации базы данных');
+  if (!navigator.onLine) { showNoInternet(); return; }
+
+  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  // Restore session
+  const { data: { session } } = await sb.auth.getSession();
+  if (session?.user) {
+    currentUser = session.user;
+    await loadProfile();
+    if (currentProfile) {
+      if (currentProfile.is_blocked) { showBlockedOverlay(); return; }
+      startApp();
+      return;
     }
+  }
+
+  showPage('page-login');
 });
 
-function compressImage(file, maxDimension = 1024) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const img = new Image();
-            img.onload = () => {
-                let width = img.width;
-                let height = img.height;
-                
-                if (width > maxDimension || height > maxDimension) {
-                    if (width > height) {
-                        height = Math.round((height * maxDimension) / width);
-                        width = maxDimension;
-                    } else {
-                        width = Math.round((width * maxDimension) / height);
-                        height = maxDimension;
-                    }
-                }
-                
-                const canvas = document.createElement('canvas');
-                canvas.width = width;
-                canvas.height = height;
-                
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, width, height);
-                
-                const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-                resolve(dataUrl);
-            };
-            img.onerror = (err) => reject(err);
-            img.src = e.target.result;
-        };
-        reader.onerror = (err) => reject(err);
-        reader.readAsDataURL(file);
-    });
+// ============================================================
+// INTERNET
+// ============================================================
+window.addEventListener('online',  () => document.getElementById('no-internet-overlay').classList.add('hidden'));
+window.addEventListener('offline', () => showNoInternet());
+
+function showNoInternet() {
+  document.getElementById('no-internet-overlay').classList.remove('hidden');
+}
+async function checkInternet() {
+  if (navigator.onLine) { location.reload(); }
+  else { showToast('Интернет недоступен', 'error'); }
+}
+function showBlockedOverlay() {
+  document.getElementById('blocked-overlay').classList.remove('hidden');
 }
 
-function toggleCustomTreatment(val) {
-    const wrapper = document.getElementById('custom-treatment-wrapper');
-    if (val === 'custom') {
-        wrapper.classList.remove('hidden');
-        document.getElementById('patient-treatment-custom').focus();
-    } else {
-        wrapper.classList.add('hidden');
-        document.getElementById('patient-treatment-custom').value = '';
-    }
+// ============================================================
+// PAGE NAV
+// ============================================================
+function showPage(pageId) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  const page = document.getElementById(pageId);
+  if (page) page.classList.add('active');
 }
 
-
-// ===== Navigation =====
-function navigateTo(pageId, options = {}) {
-    if (currentPage !== pageId) pageHistory.push(currentPage);
-    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-    const page = document.getElementById(pageId);
-    if (page) page.classList.add('active');
-    currentPage = pageId;
-
-    const backBtn = document.getElementById('back-btn');
-    const searchBtn = document.getElementById('search-toggle-btn');
-    const fab = document.getElementById('fab-btn');
-    const title = document.getElementById('header-title');
-
-    if (pageId === 'page-patients') {
-        backBtn.classList.add('hidden');
-        searchBtn.classList.remove('hidden');
-        fab.classList.remove('hidden');
-        title.textContent = 'DentaCare';
-    } else {
-        backBtn.classList.remove('hidden');
-        searchBtn.classList.add('hidden');
-        fab.classList.add('hidden');
-        closeSearch();
-    }
-
-    if (pageId === 'page-add-patient') {
-        title.textContent = editingPatientId ? 'Редактировать' : 'Новый пациент';
-        if (!editingPatientId) resetPatientForm();
-    } else if (pageId === 'page-patient-detail') {
-        title.textContent = 'Пациент';
-    } else if (pageId === 'page-add-visit') {
-        title.textContent = editingVisitId ? 'Редактировать визит' : 'Новый визит';
-    }
-    window.scrollTo(0, 0);
-}
-
-function goBack() {
-    editingPatientId = null;
-    editingVisitId = null;
-    if (pageHistory.length > 0) {
-        const prev = pageHistory.pop();
-        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-        document.getElementById(prev).classList.add('active');
-        currentPage = prev;
-
-        const backBtn = document.getElementById('back-btn');
-        const searchBtn = document.getElementById('search-toggle-btn');
-        const fab = document.getElementById('fab-btn');
-        const title = document.getElementById('header-title');
-
-        if (prev === 'page-patients') {
-            backBtn.classList.add('hidden');
-            searchBtn.classList.remove('hidden');
-            fab.classList.remove('hidden');
-            title.textContent = 'DentaCare';
-            loadPatients();
-        } else if (prev === 'page-patient-detail') {
-            backBtn.classList.remove('hidden');
-            searchBtn.classList.add('hidden');
-            fab.classList.add('hidden');
-            title.textContent = 'Пациент';
-            if (currentPatientId) showPatientDetail(currentPatientId);
-        }
-    }
-}
-
-function setActiveNav(btn) {
-    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-    btn.classList.add('active');
-}
-
-// ===== Search =====
-function toggleSearch() {
-    const bar = document.getElementById('search-bar');
-    bar.classList.toggle('hidden');
-    bar.classList.toggle('visible');
-    if (!bar.classList.contains('hidden')) {
-        document.getElementById('search-input').focus();
-    }
-}
-function closeSearch() {
-    const bar = document.getElementById('search-bar');
-    bar.classList.add('hidden');
-    bar.classList.remove('visible');
-    document.getElementById('search-input').value = '';
-}
-function clearSearch() {
-    document.getElementById('search-input').value = '';
-    renderPatients(allPatients);
-}
-function searchPatients(query) {
-    const q = query.toLowerCase().trim();
-    if (!q) { renderFilteredPatients(); return; }
-    const filtered = allPatients.filter(p =>
-        p.firstName.toLowerCase().includes(q) ||
-        p.lastName.toLowerCase().includes(q) ||
-        (p.phone && p.phone.includes(q))
-    );
-    renderPatients(filtered);
-}
-
-// ===== Load & Render Patients =====
-async function loadPatients() {
-    allPatients = await getAllPatients();
-    allPatients.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    updateStats();
-    renderFilteredPatients();
-}
-
-function updateStats() {
-    const total = allPatients.length;
-    const active = allPatients.filter(p => p.status === 'active').length;
-    const completed = allPatients.filter(p => p.status === 'completed').length;
-    let totalRevenue = 0;
-    allPatients.forEach(p => { totalRevenue += parseFloat(p.paid) || 0; });
-
-    const totalEl = document.getElementById('stat-total');
-    if (totalEl) totalEl.textContent = total;
-
-    const activeEl = document.getElementById('stat-active');
-    if (activeEl) activeEl.textContent = active;
-
-    const completedEl = document.getElementById('stat-completed');
-    if (completedEl) completedEl.textContent = completed;
-
-    const revenueEl = document.getElementById('stat-revenue');
-    if (revenueEl) revenueEl.textContent = formatCurrency(totalRevenue);
-}
-
-function filterPatients(filter, btn) {
-    currentFilter = filter;
-    document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
-    if (btn) btn.classList.add('active');
-    renderFilteredPatients();
-}
-
-function renderFilteredPatients() {
-    let filtered = allPatients;
-    if (currentFilter === 'active') filtered = allPatients.filter(p => p.status === 'active');
-    else if (currentFilter === 'completed') filtered = allPatients.filter(p => p.status === 'completed');
-    renderPatients(filtered);
-}
-
-function renderPatients(patients) {
-    const list = document.getElementById('patients-list');
-    const empty = document.getElementById('empty-state');
-    if (patients.length === 0) {
-        list.innerHTML = '';
-        empty.classList.remove('hidden');
-        return;
-    }
-    empty.classList.add('hidden');
-    list.innerHTML = patients.map(p => {
-        let avatarContent = '';
-        if (p.photo) {
-            avatarContent = `<img src="${p.photo}" alt="${p.firstName}">`;
-        } else {
-            avatarContent = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:100%;height:100%;color:#6366f1;padding:8px;background:rgba(99,102,241,0.08);border-radius:50%">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                <circle cx="12" cy="7" r="4"></circle>
-            </svg>`;
-        }
-        const statusClass = p.status === 'active' ? 'status-active' : 'status-completed';
-        const statusText = p.status === 'active' ? 'Активный' : 'Завершён';
-        const age = calculateAge(p.birthDate);
-        return `
-            <div class="patient-card" onclick="showPatientDetail('${p.id}')">
-                <div class="patient-avatar">${avatarContent}</div>
-                <div class="patient-info">
-                    <div class="patient-name">${escapeHtml(p.firstName)} ${escapeHtml(p.lastName)}</div>
-                    <div class="patient-meta">
-                        <span>${age} лет</span>
-                        ${p.phone ? `<span>${escapeHtml(p.phone)}</span>` : ''}
-                    </div>
-                </div>
-                <span class="patient-status ${statusClass}">${statusText}</span>
-            </div>`;
-    }).join('');
-}
-
-// ===== Patient Form =====
-function resetPatientForm() {
-    document.getElementById('patient-firstname').value = '';
-    document.getElementById('patient-lastname').value = '';
-    document.getElementById('patient-age').value = '';
-    document.getElementById('patient-phone').value = '';
-    document.getElementById('patient-referral').value = '';
-    
-    // Default visit date to today
-    document.getElementById('patient-visit-date').value = new Date().toISOString().split('T')[0];
-    document.getElementById('patient-visit-date-group').classList.remove('hidden');
-    
-    document.getElementById('patient-treatment-type').value = '';
-    document.getElementById('patient-treatment-custom').value = '';
-    document.getElementById('custom-treatment-wrapper').classList.add('hidden');
-    document.getElementById('analysis-none').checked = true;
-    document.getElementById('patient-total-cost').value = '';
-    document.getElementById('patient-notes').value = '';
-    patientPhoto = null;
-    const preview = document.getElementById('photo-preview');
-    preview.innerHTML = `
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
-        <span>Нажмите для загрузки</span>`;
-    document.getElementById('form-title').textContent = 'Новый пациент';
-    document.getElementById('save-patient-btn').innerHTML = `
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-        Сохранить пациента`;
-}
-
-async function handlePhotoUpload(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    try {
-        showToast('Обработка фото...');
-        patientPhoto = await compressImage(file, 1024);
-        document.getElementById('photo-preview').innerHTML = `<img src="${patientPhoto}" alt="Фото">`;
-    } catch (err) {
-        console.error('Error uploading photo:', err);
-        showToast('Ошибка при загрузке фото');
-    }
-}
-
-async function savePatient() {
-    const firstName = document.getElementById('patient-firstname').value.trim();
-    const lastName = document.getElementById('patient-lastname').value.trim();
-    const ageVal = parseInt(document.getElementById('patient-age').value) || 0;
-    
-    // Convert age to birth year to keep database schema compatible
-    const birthDate = String(new Date().getFullYear() - ageVal);
-    
-    const phone = document.getElementById('patient-phone').value.trim();
-    const referral = document.getElementById('patient-referral').value.trim();
-    const visitDate = document.getElementById('patient-visit-date').value;
-    const selectedTreatment = document.getElementById('patient-treatment-type').value;
-    const customTreatment = document.getElementById('patient-treatment-custom').value.trim();
-    const treatmentType = selectedTreatment === 'custom' ? customTreatment : selectedTreatment;
-    
-    // Get radio value
-    let analysis = 'none';
-    const selectedAnalysis = document.querySelector('input[name="patient-analysis"]:checked');
-    if (selectedAnalysis) {
-        analysis = selectedAnalysis.value;
-    }
-    
-    const totalCost = parseFloat(document.getElementById('patient-total-cost').value) || 0;
-    const paid = totalCost; // set paid = totalCost since we only show one main sum
-    const notes = document.getElementById('patient-notes').value.trim();
-
-    if (!firstName || !lastName || !ageVal) {
-        showToast('Заполните обязательные поля');
-        return;
-    }
-
-    const patientData = { 
-        firstName, 
-        lastName, 
-        birthDate, 
-        phone, 
-        referral,
-        treatmentType,
-        analysis,
-        paid,
-        totalCost,
-        notes, 
-        photo: patientPhoto, 
-        status: 'active' 
-    };
-
-    try {
-        if (editingPatientId) {
-            const existing = await getPatient(editingPatientId);
-            patientData.id = editingPatientId;
-            patientData.createdAt = existing.createdAt;
-            patientData.status = existing.status;
-            if (!patientPhoto && existing.photo) patientData.photo = existing.photo;
-            await updatePatient(patientData);
-            showToast('Пациент обновлён');
-            editingPatientId = null;
-            currentPatientId = patientData.id;
-            await loadPatients();
-            showPatientDetail(patientData.id);
-            pageHistory = ['page-patients'];
-        } else {
-            const newPatient = await addPatient(patientData);
-            
-            // Automatically create initial visit representing registration/first treatment
-            const treatmentTypesRu = {
-                karies: 'Лечение кариеса',
-                endodontics: 'Эндодонтия',
-                cleaning: 'Профилактическая чистка',
-                orthopedics: 'Ортопедия',
-                surgery: 'Хирургия'
-            };
-            const treatmentLabel = treatmentTypesRu[treatmentType] || (treatmentType || 'Первичный прием');
-            
-            const initialVisit = {
-                patientId: newPatient.id,
-                date: visitDate || new Date().toISOString().split('T')[0],
-                procedures: [{ name: treatmentLabel, cost: totalCost }],
-                totalCost: totalCost,
-                paidAmount: totalCost,
-                photos: patientPhoto ? [patientPhoto] : [],
-                notes: notes || 'Первичный прием'
-            };
-            await addVisit(initialVisit);
-
-            showToast('Пациент добавлен');
-            await loadPatients();
-            showPatientDetail(newPatient.id);
-            pageHistory = ['page-patients'];
-        }
-    } catch (err) {
-        console.error(err);
-        showToast('Ошибка сохранения');
-    }
-}
-
-// ===== Patient Detail =====
-async function showPatientDetail(id) {
-    currentPatientId = id;
-    const patient = await getPatient(id);
-    if (!patient) { showToast('Пациент не найден'); return; }
-    const visits = await getVisitsByPatient(id);
-
-    let totalSpent = 0;
-    visits.forEach(v => { totalSpent += v.totalCost || 0; });
-
-    let avatarContent = '';
-    if (patient.photo) {
-        avatarContent = `<img src="${patient.photo}" alt="${patient.firstName}">`;
-    } else {
-        avatarContent = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:100%;height:100%;color:#6366f1;padding:12px;background:rgba(99,102,241,0.08);border-radius:50%">
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-            <circle cx="12" cy="7" r="4"></circle>
-        </svg>`;
-    }
-    const age = calculateAge(patient.birthDate);
-    const statusClass = patient.status === 'active' ? 'status-active' : 'status-completed';
-    const statusText = patient.status === 'active' ? 'Активный' : 'Завершён';
-    const toggleStatusText = patient.status === 'active' ? 'Завершить' : 'Активировать';
-    const toggleStatusBtn = patient.status === 'active' ? 'btn-success' : 'btn-outline';
-
-    const treatmentTypesRu = {
-        karies: 'Лечение кариеса',
-        endodontics: 'Эндодонтия',
-        cleaning: 'Профилактическая чистка',
-        orthopedics: 'Ортопедия',
-        surgery: 'Хирургия'
-    };
-
-    let analysisBadge = '';
-    if (patient.analysis === 'positive' || patient.analysis === 'healthy') {
-        analysisBadge = '<span class="patient-status status-completed" style="margin-top:8px;margin-left:4px;display:inline-flex">Анализ: Здоров</span>';
-    } else if (patient.analysis === 'negative' || patient.analysis === 'sick') {
-        analysisBadge = '<span class="patient-status" style="margin-top:8px;margin-left:4px;display:inline-flex;background:var(--danger-bg);color:var(--danger)">Анализ: Болен</span>';
-    }
-
-    let additionalInfo = '';
-    if (patient.referral) {
-        additionalInfo += `<div><strong>Откуда пришёл:</strong> ${escapeHtml(patient.referral)}</div>`;
-    }
-    if (patient.treatmentType) {
-        const presetLabel = treatmentTypesRu[patient.treatmentType];
-        additionalInfo += `<div><strong>Тип лечения:</strong> ${presetLabel || escapeHtml(patient.treatmentType)}</div>`;
-    }
-    if (patient.notes) {
-        additionalInfo += `<div><strong>Заметки:</strong> ${escapeHtml(patient.notes)}</div>`;
-    }
-    if (additionalInfo) {
-        additionalInfo = `<div class="detail-notes-block" style="text-align:left;line-height:1.6">${additionalInfo}</div>`;
-    }
-
-    const totalAmt = patient.totalCost || 0;
-
-    let html = `
-        <div class="detail-header">
-            <div class="detail-avatar">${avatarContent}</div>
-            <div class="detail-name">${escapeHtml(patient.firstName)} ${escapeHtml(patient.lastName)}</div>
-            <div class="detail-birth">📅 ${formatDate(patient.birthDate)} (${age} лет)</div>
-            ${patient.phone ? `<div class="detail-phone">📞 ${escapeHtml(patient.phone)}</div>` : ''}
-            <div style="display:flex;justify-content:center;gap:4px;flex-wrap:wrap">
-                <span class="patient-status ${statusClass}" style="margin-top:8px;display:inline-flex">${statusText}</span>
-                ${analysisBadge}
-            </div>
-            ${additionalInfo}
-        </div>
-
-        <div class="detail-actions">
-            <button class="btn ${toggleStatusBtn} btn-sm" onclick="togglePatientStatus('${patient.id}')">
-                ${toggleStatusText}
-            </button>
-            <button class="btn btn-secondary btn-sm" onclick="editPatient('${patient.id}')">✏️ Редакт.</button>
-            <button class="btn btn-secondary btn-sm" onclick="printPatient('${patient.id}')">📄 Печать</button>
-            <button class="btn btn-secondary btn-sm" onclick="sharePatientAsImage('${patient.id}')">📸 В Фото</button>
-            <button class="btn btn-danger btn-sm" onclick="confirmDeletePatient('${patient.id}')">🗑️</button>
-        </div>
-
-        <div class="detail-total" style="padding:16px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center">
-            <span style="color:var(--text-secondary);font-size:14px">Общая сумма:</span>
-            <span style="font-weight:800;color:var(--success);font-size:20px">${formatCurrency(totalAmt)}</span>
-        </div>
-
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-            <h3 class="detail-section-title" style="margin-bottom:0">📋 История визитов (${visits.length})</h3>
-            <button class="btn btn-primary btn-sm" onclick="openAddVisit('${patient.id}')">+ Визит</button>
-        </div>`;
-
-    if (visits.length === 0) {
-        html += `<div class="empty-state" style="padding:30px"><div class="empty-icon">📋</div><h3>Нет визитов</h3><p>Нажмите «+ Визит» чтобы добавить</p></div>`;
-    } else {
-        visits.forEach(v => {
-            html += `<div class="visit-card">
-                <div class="visit-header">
-                    <span class="visit-date">📅 ${formatDate(v.date)}</span>
-                    <span class="visit-cost">${formatCurrency(v.totalCost || 0)}</span>
-                </div>
-                <div class="visit-procedures">`;
-            if (v.procedures && v.procedures.length) {
-                v.procedures.forEach(proc => {
-                    html += `<div class="visit-procedure-item">
-                        <span class="visit-procedure-name">${escapeHtml(proc.name)}</span>
-                        <span class="visit-procedure-cost">${formatCurrency(proc.cost || 0)}</span>
-                    </div>`;
-                });
-            }
-            html += `</div>`;
-            if (v.notes) html += `<div class="visit-notes">📝 ${escapeHtml(v.notes)}</div>`;
-            if (v.photos && v.photos.length) {
-                html += `<div class="visit-photos">`;
-                v.photos.forEach(photo => {
-                    html += `<div class="visit-photo-thumb" onclick="event.stopPropagation();openPhotoViewer('${photo}')"><img src="${photo}" alt="Фото визита"></div>`;
-                });
-                html += `</div>`;
-            }
-            html += `<div class="visit-actions">
-                <button class="btn btn-secondary btn-sm" onclick="editVisit('${patient.id}','${v.id}')">✏️ Редакт.</button>
-                <button class="btn btn-danger btn-sm" onclick="confirmDeleteVisit('${v.id}','${patient.id}')">🗑️ Удалить</button>
-            </div></div>`;
-        });
-    }
-
-    document.getElementById('patient-detail-content').innerHTML = html;
-    navigateTo('page-patient-detail');
-}
-
-async function togglePatientStatus(id) {
-    const patient = await getPatient(id);
-    patient.status = patient.status === 'active' ? 'completed' : 'active';
-    await updatePatient(patient);
-    showToast(patient.status === 'active' ? 'Пациент активирован' : 'Лечение завершено');
-    await loadPatients();
-    showPatientDetail(id);
-    pageHistory = pageHistory.filter(p => p !== 'page-patient-detail');
-}
-
-async function editPatient(id) {
-    const patient = await getPatient(id);
-    editingPatientId = id;
-    document.getElementById('patient-firstname').value = patient.firstName;
-    document.getElementById('patient-lastname').value = patient.lastName;
-    // Calculate age from birthDate
-    const age = calculateAge(patient.birthDate);
-    document.getElementById('patient-age').value = age > 0 ? age : '';
-    
-    // Hide visit date input when editing (since visit is already logged)
-    document.getElementById('patient-visit-date-group').classList.add('hidden');
-    
-    document.getElementById('patient-phone').value = patient.phone || '';
-    document.getElementById('patient-referral').value = patient.referral || '';
-    // Restore custom treatment or preset
-    const presetVals = ['karies','endodontics','cleaning','orthopedics','surgery',''];
-    if (patient.treatmentType && !presetVals.includes(patient.treatmentType)) {
-        document.getElementById('patient-treatment-type').value = 'custom';
-        document.getElementById('patient-treatment-custom').value = patient.treatmentType;
-        document.getElementById('custom-treatment-wrapper').classList.remove('hidden');
-    } else {
-        document.getElementById('patient-treatment-type').value = patient.treatmentType || '';
-        document.getElementById('custom-treatment-wrapper').classList.add('hidden');
-    }
-    
-    // Set radio analysis
-    let analysisVal = patient.analysis || 'none';
-    if (analysisVal === 'positive') analysisVal = 'healthy';
-    if (analysisVal === 'negative') analysisVal = 'sick';
-    const radioElem = document.getElementById(`analysis-${analysisVal}`);
-    if (radioElem) radioElem.checked = true;
-    
-    document.getElementById('patient-total-cost').value = patient.totalCost !== undefined ? patient.totalCost : '';
-
-    document.getElementById('patient-notes').value = patient.notes || '';
-    patientPhoto = patient.photo || null;
-    if (patient.photo) {
-        document.getElementById('photo-preview').innerHTML = `<img src="${patient.photo}" alt="Фото">`;
-    }
-    document.getElementById('form-title').textContent = 'Редактировать пациента';
-    navigateTo('page-add-patient');
-}
-
-function confirmDeletePatient(id) {
-    showDialog('Удалить пациента?', 'Все данные пациента и его визиты будут удалены безвозвратно.', async () => {
-        await deletePatient(id);
-        showToast('Пациент удалён');
-        await loadPatients();
-        pageHistory = [];
-        navigateTo('page-patients');
-    });
-}
-
-// ===== Visits =====
-function openAddVisit(patientId) {
-    currentPatientId = patientId;
-    editingVisitId = null;
-    document.getElementById('visit-form-title').textContent = 'Новый визит';
-    document.getElementById('visit-date').value = new Date().toISOString().split('T')[0];
-    document.getElementById('visit-notes').value = '';
-    visitPhotos = [];
-    renderVisitPhotosGrid();
-    const procList = document.getElementById('procedures-list');
-    procList.innerHTML = '';
-    addProcedureField();
-    updateTotalCost();
-    navigateTo('page-add-visit');
-}
-
-async function editVisit(patientId, visitId) {
-    currentPatientId = patientId;
-    editingVisitId = visitId;
-    const visits = await getVisitsByPatient(patientId);
-    const visit = visits.find(v => v.id === visitId);
-    if (!visit) return;
-
-    document.getElementById('visit-form-title').textContent = 'Редактировать визит';
-    document.getElementById('visit-date').value = visit.date;
-    document.getElementById('visit-notes').value = visit.notes || '';
-    visitPhotos = visit.photos ? [...visit.photos] : [];
-    renderVisitPhotosGrid();
-
-    const procList = document.getElementById('procedures-list');
-    procList.innerHTML = '';
-    if (visit.procedures && visit.procedures.length) {
-        visit.procedures.forEach(proc => addProcedureField(proc.name, proc.cost));
-    } else {
-        addProcedureField();
-    }
-    updateTotalCost();
-    navigateTo('page-add-visit');
-}
-
-function addProcedureField(name = '', cost = '') {
-    const list = document.getElementById('procedures-list');
-    const div = document.createElement('div');
-    div.className = 'procedure-item';
-    div.innerHTML = `
-        <input type="text" class="form-input procedure-name" placeholder="Название процедуры" value="${escapeHtml(String(name))}">
-        <input type="number" class="form-input procedure-cost" placeholder="Цена" value="${cost}" oninput="updateTotalCost()">
-        <button class="procedure-remove" onclick="this.parentElement.remove();updateTotalCost()">✕</button>`;
-    list.appendChild(div);
-}
-
-function updateTotalCost() {
-    const costs = document.querySelectorAll('.procedure-cost');
-    let total = 0;
-    costs.forEach(input => { total += parseFloat(input.value) || 0; });
-    document.getElementById('total-cost-value').textContent = formatCurrency(total);
-}
-
-async function handleVisitPhotos(event) {
-    const files = event.target.files;
-    if (!files || files.length === 0) return;
-    showToast('Обработка фото...');
-    for (let i = 0; i < files.length; i++) {
-        try {
-            const compressed = await compressImage(files[i], 1024);
-            visitPhotos.push(compressed);
-        } catch (err) {
-            console.error('Error compressing visit photo:', err);
-        }
-    }
-    renderVisitPhotosGrid();
-    event.target.value = '';
-}
-
-function renderVisitPhotosGrid() {
-    const grid = document.getElementById('visit-photos-grid');
-    let html = '';
-    visitPhotos.forEach((photo, i) => {
-        html += `<div class="visit-photo-item">
-            <img src="${photo}" alt="Фото ${i + 1}">
-            <button class="remove-photo" onclick="removeVisitPhoto(${i})">✕</button>
-        </div>`;
-    });
-    html += `<div class="visit-photo-add" onclick="document.getElementById('visit-photo-input').click()">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-        <span>Добавить фото</span>
-    </div>`;
-    grid.innerHTML = html;
-}
-
-function removeVisitPhoto(index) {
-    visitPhotos.splice(index, 1);
-    renderVisitPhotosGrid();
-}
-
-async function saveVisit() {
-    const date = document.getElementById('visit-date').value;
-    if (!date) { showToast('Выберите дату визита'); return; }
-
-    const procItems = document.querySelectorAll('.procedure-item');
-    const procedures = [];
-    let totalCost = 0;
-    procItems.forEach(item => {
-        const name = item.querySelector('.procedure-name').value.trim();
-        const cost = parseFloat(item.querySelector('.procedure-cost').value) || 0;
-        if (name) {
-            procedures.push({ name, cost });
-            totalCost += cost;
-        }
-    });
-
-    const notes = document.getElementById('visit-notes').value.trim();
-    const visitData = { patientId: currentPatientId, date, procedures, totalCost, photos: visitPhotos, notes };
-
-    try {
-        if (editingVisitId) {
-            visitData.id = editingVisitId;
-            await updateVisit(visitData);
-            showToast('Визит обновлён');
-            editingVisitId = null;
-        } else {
-            await addVisit(visitData);
-            showToast('Визит добавлен');
-        }
-        await loadPatients();
-        showPatientDetail(currentPatientId);
-        pageHistory = pageHistory.filter(p => p !== 'page-add-visit');
-    } catch (err) {
-        console.error(err);
-        showToast('Ошибка сохранения визита');
-    }
-}
-
-function confirmDeleteVisit(visitId, patientId) {
-    showDialog('Удалить визит?', 'Данные визита будут удалены безвозвратно.', async () => {
-        await deleteVisit(visitId);
-        showToast('Визит удалён');
-        await loadPatients();
-        showPatientDetail(patientId);
-    });
-}
-
-// ===== PDF / Print Report =====
-async function printPatient(id) {
-    showToast('Формирование отчёта...');
-    const patient = await getPatient(id);
-    const visits = await getVisitsByPatient(id);
-
-    const treatmentTypesRu = {
-        karies: 'Лечение кариеса',
-        endodontics: 'Эндодонтия',
-        cleaning: 'Профилактическая чистка',
-        orthopedics: 'Ортопедия',
-        surgery: 'Хирургия'
-    };
-    const an = patient.analysis || 'none';
-    const analysisLabel = (an === 'healthy' || an === 'positive') ? 'Здоров' : (an === 'sick' || an === 'negative') ? 'Болен' : 'Не указано';
-    const analysisBadgeClass = (an === 'healthy' || an === 'positive') ? 'badge-pos' : (an === 'sick' || an === 'negative') ? 'badge-neg' : 'badge-none';
-
-    const totalAmt = patient.totalCost || 0;
-    const treatmentLabel = treatmentTypesRu[patient.treatmentType] || (patient.treatmentType || '—');
-
-    // Build visits table rows
-    let visitsRows = '';
-    if (visits.length === 0) {
-        visitsRows = '<tr><td colspan="3" style="padding:16px;text-align:center;color:#9ca3af;font-style:italic">Визиты отсутствуют</td></tr>';
-    } else {
-        visits.forEach((v, idx) => {
-            const bg = idx % 2 === 0 ? '#ffffff' : '#f9fafb';
-            const procs = v.procedures && v.procedures.length
-                ? v.procedures.map(p => `${escapeHtml(p.name)} — ${formatCurrency(p.cost || 0)}`).join('<br>')
-                : '<span style="color:#9ca3af">—</span>';
-            const noteStr = v.notes ? `<br><em style="color:#6b7280;font-size:11px">📝 ${escapeHtml(v.notes)}</em>` : '';
-            visitsRows += `<tr style="background:${bg};border-bottom:1px solid #e5e7eb">
-                <td style="padding:10px 12px;font-size:13px;white-space:nowrap;vertical-align:top">${formatDate(v.date)}</td>
-                <td style="padding:10px 12px;font-size:13px">${procs}${noteStr}</td>
-                <td style="padding:10px 12px;font-size:13px;text-align:right;font-weight:700;color:#059669;vertical-align:top">${formatCurrency(v.totalCost || 0)}</td>
-            </tr>`;
-        });
-    }
-
-    const photoHtml = patient.photo
-        ? `<img src="${patient.photo}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid rgba(255,255,255,0.4);margin-right:20px">`
-        : `<div style="width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;margin-right:20px"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8" style="width:48px;height:48px"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg></div>`;
-
-    const html = `<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="UTF-8">
-<title>Safia Dent — ${escapeHtml(patient.firstName)} ${escapeHtml(patient.lastName)}</title>
-<style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family: 'Segoe UI', Arial, sans-serif; background:#f0f4ff; color:#1f2937; }
-  .page { width:210mm; min-height:297mm; margin:0 auto; background:#fff; box-shadow:0 0 40px rgba(0,0,0,0.15); }
-
-  /* Header */
-  .header { background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #6c63ff 100%); padding:30px 36px; color:white; position:relative; overflow:hidden; }
-  .header::before { content:''; position:absolute; top:-40px; right:-40px; width:200px; height:200px; border-radius:50%; background:rgba(255,255,255,0.08); }
-  .header::after  { content:''; position:absolute; bottom:-60px; left:60px; width:150px; height:150px; border-radius:50%; background:rgba(255,255,255,0.06); }
-  .header-top { display:flex; align-items:center; justify-content:space-between; position:relative; z-index:1; }
-  .header-brand { display:flex; align-items:center; }
-  .brand-text h1 { font-size:28px; font-weight:800; letter-spacing:2px; }
-  .brand-text p  { font-size:13px; opacity:0.85; margin-top:2px; }
-  .header-meta { text-align:right; font-size:12px; opacity:0.85; }
-  .header-meta strong { display:block; font-size:14px; opacity:1; }
-  .patient-bar { display:flex; align-items:center; margin-top:24px; padding-top:20px; border-top:1px solid rgba(255,255,255,0.25); position:relative; z-index:1; }
-  .patient-bar-info h2 { font-size:20px; font-weight:700; }
-  .patient-bar-info p  { font-size:13px; opacity:0.85; margin-top:3px; }
-
-  /* Finance card */
-  .finance-single { border:1px solid #e5e7eb; border-radius:12px; margin:24px 36px; padding:20px 24px; display:flex; justify-content:space-between; align-items:center; background:#f0fdf4; }
-  .finance-single .label { font-size:12px; text-transform:uppercase; font-weight:600; color:#6b7280; letter-spacing:0.5px; }
-  .finance-single .value { font-size:24px; font-weight:800; color:#059669; }
-
-  /* Info section */
-  .info-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:0 36px 24px; }
-  .info-box { border:1px solid #e5e7eb; border-radius:10px; padding:16px; }
-  .info-box h3 { font-size:12px; font-weight:700; text-transform:uppercase; color:#6b7280; letter-spacing:0.5px; margin-bottom:10px; padding-bottom:8px; border-bottom:2px solid #e5e7eb; }
-  .info-row { display:flex; justify-content:space-between; padding:4px 0; font-size:13px; }
-  .info-row .key { color:#6b7280; }
-  .info-row .val { font-weight:600; color:#111827; text-align:right; max-width:55%; }
-
-  /* Visits table */
-  .section { margin:0 36px 24px; }
-  .section-title { font-size:13px; font-weight:700; text-transform:uppercase; color:#4f46e5; letter-spacing:0.5px; margin-bottom:10px; padding-bottom:8px; border-bottom:2px solid #4f46e5; }
-  table { width:100%; border-collapse:collapse; border:1px solid #e5e7eb; border-radius:8px; overflow:hidden; }
-  thead tr { background: linear-gradient(135deg,#4f46e5,#7c3aed); color:white; }
-  th { padding:11px 12px; text-align:left; font-size:12px; font-weight:600; letter-spacing:0.3px; }
-  th:last-child { text-align:right; }
-
-  /* Footer */
-  .footer { margin:24px 36px 36px; padding-top:16px; border-top:1px solid #e5e7eb; display:flex; justify-content:space-between; font-size:11px; color:#9ca3af; }
-
-  /* Analysis badge */
-  .badge { display:inline-block; padding:3px 10px; border-radius:20px; font-size:12px; font-weight:600; }
-  .badge-pos { background:#d1fae5; color:#065f46; }
-  .badge-neg { background:#fee2e2; color:#991b1b; }
-  .badge-none{ background:#f3f4f6; color:#6b7280; }
-
-  @media print {
-    body { background: #fff; }
-    .page { box-shadow: none; width:100%; }
-    @page { margin:0; size: A4; }
+// ============================================================
+// AUTH — LOGIN
+// ============================================================
+async function handleLogin(e) {
+  e.preventDefault();
+  if (!navigator.onLine) { showNoInternet(); return; }
+
+  const email    = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errEl    = document.getElementById('login-error');
+  const btn      = document.getElementById('login-btn');
+  const spinner  = document.getElementById('login-spinner');
+  const btnText  = document.getElementById('login-btn-text');
+
+  errEl.classList.add('hidden');
+  btn.disabled = true;
+  spinner.classList.remove('hidden');
+  btnText.textContent = 'Вход...';
+
+  try {
+    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+    if (error) throw new Error(getAuthError(error.message));
+
+    currentUser = data.user;
+    await loadProfile();
+
+    if (!currentProfile) throw new Error('Профиль не найден. Обратитесь к администратору.');
+    if (currentProfile.is_blocked) { showBlockedOverlay(); return; }
+
+    startApp();
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.classList.remove('hidden');
+  } finally {
+    btn.disabled = false;
+    spinner.classList.add('hidden');
+    btnText.textContent = 'Войти';
   }
-</style>
-</head>
-<body>
-<div class="page">
-
-  <!-- HEADER -->
-  <div class="header">
-    <div class="header-top">
-      <div class="header-brand">
-        <div class="brand-text">
-          <h1>🦷 SAFIA DENT</h1>
-          <p>Доктор: Шукуров Азам</p>
-        </div>
-      </div>
-      <div class="header-meta">
-        МЕДИЦИНСКАЯ КАРТА
-        <strong>Дата: ${new Date().toLocaleDateString('ru-RU')}</strong>
-      </div>
-    </div>
-    <div class="patient-bar">
-      ${photoHtml}
-      <div class="patient-bar-info">
-        <h2>${escapeHtml(patient.firstName)} ${escapeHtml(patient.lastName)}</h2>
-        <p>📅 ${formatDate(patient.birthDate)} · ${calculateAge(patient.birthDate)} лет${patient.phone ? ' · 📞 ' + escapeHtml(patient.phone) : ''}</p>
-      </div>
-    </div>
-  </div>
-
-  <!-- FINANCE SINGLE -->
-  <div class="finance-single">
-    <div class="label">Общая сумма</div>
-    <div class="value">${formatCurrency(totalAmt)}</div>
-  </div>
-
-  <!-- INFO GRID -->
-  <div class="info-grid">
-    <div class="info-box">
-      <h3>Персональные данные</h3>
-      <div class="info-row"><span class="key">Статус лечения</span><span class="val">${patient.status === 'active' ? '🟡 Активный' : '🟢 Завершён'}</span></div>
-      <div class="info-row"><span class="key">Анализы</span><span class="val">
-        <span class="badge ${analysisBadgeClass}">${analysisLabel}</span>
-      </span></div>
-      <div class="info-row"><span class="key">Тип лечения</span><span class="val">${escapeHtml(treatmentLabel)}</span></div>
-    </div>
-    <div class="info-box">
-      <h3>Заметки врача</h3>
-      <p style="font-size:13px;color:#374151;line-height:1.6">${escapeHtml(patient.notes || 'Нет заметок')}</p>
-    </div>
-  </div>
-
-  <!-- VISITS TABLE -->
-  <div class="section">
-    <div class="section-title">📋 История посещений (${visits.length})</div>
-    <table>
-      <thead><tr>
-        <th style="width:110px">Дата</th>
-        <th>Процедуры</th>
-        <th style="width:130px;text-align:right">Стоимость</th>
-      </tr></thead>
-      <tbody>${visitsRows}</tbody>
-    </table>
-  </div>
-
-  <!-- FOOTER -->
-  <div class="footer">
-    <span>Клиника Safia Dent · Доктор Шукуров Азам</span>
-    <span>Сформировано: ${new Date().toLocaleDateString('ru-RU', {day:'2-digit',month:'long',year:'numeric'})}</span>
-  </div>
-</div>
-<script>window.onload = function(){ window.print(); }<\/script>
-</body>
-</html>`;
-
-    const win = window.open('', '_blank', 'width=900,height=700');
-    if (!win) { showToast('Разрешите всплывающие окна'); return; }
-    win.document.write(html);
-    win.document.close();
 }
-async function sharePatientAsImage(id) {
-    showToast('Генерация изображения...');
-    try {
-        const patient = await getPatient(id);
-        const visits = await getVisitsByPatient(id);
 
-        const treatmentTypesRu = {
-            karies: 'Лечение кариеса',
-            endodontics: 'Эндодонтия',
-            cleaning: 'Профилактическая чистка',
-            orthopedics: 'Ортопедия',
-            surgery: 'Хирургия'
-        };
-        const an = patient.analysis || 'none';
-        const analysisLabel = (an === 'healthy' || an === 'positive') ? 'Здоров' : (an === 'sick' || an === 'negative') ? 'Болен' : 'Не указано';
-        const analysisBadgeClass = (an === 'healthy' || an === 'positive') ? 'badge-pos' : (an === 'sick' || an === 'negative') ? 'badge-neg' : 'badge-none';
-        const totalAmt = patient.totalCost || 0;
-        const treatmentLabel = treatmentTypesRu[patient.treatmentType] || (patient.treatmentType || '—');
+function getAuthError(msg) {
+  if (msg.includes('Invalid login') || msg.includes('invalid_credentials')) return 'Неверный email или пароль';
+  if (msg.includes('Email not confirmed')) return 'Email не подтверждён. Проверьте почту.';
+  if (msg.includes('Too many')) return 'Слишком много попыток. Подождите немного.';
+  return 'Ошибка входа. Проверьте email и пароль.';
+}
 
-        // Build visits table rows
-        let visitsRows = '';
-        if (visits.length === 0) {
-            visitsRows = '<tr><td colspan="3" style="padding:16px;text-align:center;color:#9ca3af;font-style:italic">Визиты отсутствуют</td></tr>';
-        } else {
-            visits.forEach((v, idx) => {
-                const bg = idx % 2 === 0 ? '#ffffff' : '#f9fafb';
-                const procs = v.procedures && v.procedures.length
-                    ? v.procedures.map(p => `${escapeHtml(p.name)} — ${formatCurrency(p.cost || 0)}`).join('<br>')
-                    : '<span style="color:#9ca3af">—</span>';
-                const noteStr = v.notes ? `<br><em style="color:#6b7280;font-size:11px">📝 ${escapeHtml(v.notes)}</em>` : '';
-                visitsRows += `<tr style="background:${bg};border-bottom:1px solid #e5e7eb">
-                    <td style="padding:10px 12px;font-size:13px;white-space:nowrap;vertical-align:top">${formatDate(v.date)}</td>
-                    <td style="padding:10px 12px;font-size:13px">${procs}${noteStr}</td>
-                    <td style="padding:10px 12px;font-size:13px;text-align:right;font-weight:700;color:#059669;vertical-align:top">${formatCurrency(v.totalCost || 0)}</td>
-                </tr>`;
-            });
-        }
+async function loadProfile() {
+  if (!currentUser) return;
+  const { data, error } = await sb
+    .from('profiles')
+    .select('*')
+    .eq('id', currentUser.id)
+    .single();
+  if (!error && data) currentProfile = data;
+}
 
-        const photoHtml = patient.photo
-            ? `<img src="${patient.photo}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid rgba(255,255,255,0.4);margin-right:20px">`
-            : `<div style="width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;margin-right:20px"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8" style="width:48px;height:48px"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg></div>`;
+// ============================================================
+// LOGOUT
+// ============================================================
+async function logout() {
+  if (syncInterval) clearInterval(syncInterval);
+  hideProfileMenu();
+  await sb.auth.signOut();
+  currentUser = null;
+  currentProfile = null;
+  document.getElementById('blocked-overlay').classList.add('hidden');
+  showPage('page-login');
+}
 
-        const html = `<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="UTF-8">
-<style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family: 'Segoe UI', Arial, sans-serif; background:#ffffff; color:#1f2937; padding: 20px; }
-  .page { width:100%; max-width:800px; margin:0 auto; background:#fff; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; }
+// ============================================================
+// START APP
+// ============================================================
+function startApp() {
+  if (currentProfile.role === 'admin') {
+    showPage('page-admin');
+    loadAdminDashboard();
+  } else {
+    showPage('page-dashboard');
+    updateDentistHeader();
+    loadDashboard();
+    loadNotifications();
+    checkAndGenerateNotifications();
+    startSyncInterval();
+  }
+}
 
-  /* Header */
-  .header { background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #6c63ff 100%); padding:30px 36px; color:white; position:relative; overflow:hidden; }
-  .header::before { content:''; position:absolute; top:-40px; right:-40px; width:200px; height:200px; border-radius:50%; background:rgba(255,255,255,0.08); }
-  .header::after  { content:''; position:absolute; bottom:-60px; left:60px; width:150px; height:150px; border-radius:50%; background:rgba(255,255,255,0.06); }
-  .header-top { display:flex; align-items:center; justify-content:space-between; position:relative; z-index:1; }
-  .header-brand { display:flex; align-items:center; }
-  .brand-text h1 { font-size:28px; font-weight:800; letter-spacing:2px; }
-  .brand-text p  { font-size:13px; opacity:0.85; margin-top:2px; }
-  .header-meta { text-align:right; font-size:12px; opacity:0.85; }
-  .header-meta strong { display:block; font-size:14px; opacity:1; }
-  .patient-bar { display:flex; align-items:center; margin-top:24px; padding-top:20px; border-top:1px solid rgba(255,255,255,0.25); position:relative; z-index:1; }
-  .patient-bar-info h2 { font-size:20px; font-weight:700; }
-  .patient-bar-info p  { font-size:13px; opacity:0.85; margin-top:3px; }
-
-  /* Finance card */
-  .finance-single { border:1px solid #e5e7eb; border-radius:12px; margin:24px 36px; padding:20px 24px; display:flex; justify-content:space-between; align-items:center; background:#f0fdf4; }
-  .finance-single .label { font-size:12px; text-transform:uppercase; font-weight:600; color:#6b7280; letter-spacing:0.5px; }
-  .finance-single .value { font-size:24px; font-weight:800; color:#059669; }
-
-  /* Info section */
-  .info-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:0 36px 24px; }
-  .info-box { border:1px solid #e5e7eb; border-radius:10px; padding:16px; }
-  .info-box h3 { font-size:12px; font-weight:700; text-transform:uppercase; color:#6b7280; letter-spacing:0.5px; margin-bottom:10px; padding-bottom:8px; border-bottom:2px solid #e5e7eb; }
-  .info-row { display:flex; justify-content:space-between; padding:4px 0; font-size:13px; }
-  .info-row .key { color:#6b7280; }
-  .info-row .val { font-weight:600; color:#111827; text-align:right; max-width:55%; }
-
-  /* Visits table */
-  .section { margin:0 36px 24px; }
-  .section-title { font-size:13px; font-weight:700; text-transform:uppercase; color:#4f46e5; letter-spacing:0.5px; margin-bottom:10px; padding-bottom:8px; border-bottom:2px solid #4f46e5; }
-  table { width:100%; border-collapse:collapse; border:1px solid #e5e7eb; border-radius:8px; overflow:hidden; }
-  thead tr { background: linear-gradient(135deg,#4f46e5,#7c3aed); color:white; }
-  th { padding:11px 12px; text-align:left; font-size:12px; font-weight:600; letter-spacing:0.3px; }
-  th:last-child { text-align:right; }
-
-  /* Footer */
-  .footer { margin:24px 36px 36px; padding-top:16px; border-top:1px solid #e5e7eb; display:flex; justify-content:space-between; font-size:11px; color:#9ca3af; }
-
-  /* Analysis badge */
-  .badge { display:inline-block; padding:3px 10px; border-radius:20px; font-size:12px; font-weight:600; }
-  .badge-pos { background:#d1fae5; color:#065f46; }
-  .badge-neg { background:#fee2e2; color:#991b1b; }
-  .badge-none{ background:#f3f4f6; color:#6b7280; }
-</style>
-</head>
-<body>
-<div class="page">
-
-  <!-- HEADER -->
-  <div class="header">
-    <div class="header-top">
-      <div class="header-brand">
-        <div class="brand-text">
-          <h1>🦷 SAFIA DENT</h1>
-          <p>Доктор: Шукуров Азам</p>
-        </div>
-      </div>
-      <div class="header-meta">
-        МЕДИЦИНСКАЯ КАРТА
-        <strong>Дата: \${new Date().toLocaleDateString('ru-RU')}</strong>
-      </div>
-    </div>
-    <div class="patient-bar">
-      \${photoHtml}
-      <div class="patient-bar-info">
-        <h2>\${escapeHtml(patient.firstName)} \${escapeHtml(patient.lastName)}</h2>
-        <p>📅 \${formatDate(patient.birthDate)} · \${calculateAge(patient.birthDate)} лет\${patient.phone ? ' · 📞 ' + escapeHtml(patient.phone) : ''}</p>
-      </div>
-    </div>
-  </div>
-
-  <!-- FINANCE SINGLE -->
-  <div class="finance-single">
-    <div class="label">Общая сумма</div>
-    <div class="value">\${formatCurrency(totalAmt)}</div>
-  </div>
-
-  <!-- INFO GRID -->
-  <div class="info-grid">
-    <div class="info-box">
-      <h3>Персональные данные</h3>
-      <div class="info-row"><span class="key">Статус лечения</span><span class="val">\${patient.status === 'active' ? '🟡 Активный' : '🟢 Завершён'}</span></div>
-      <div class="info-row"><span class="key">Анализы</span><span class="val">
-        <span class="badge \${patient.analysis === 'positive' ? 'badge-pos' : patient.analysis === 'negative' ? 'badge-neg' : 'badge-none'}"\>\${analysisRu[patient.analysis || 'none']}</span>
-      </span></div>
-      <div class="info-row"><span class="key">Тип лечения</span><span class="val">\${escapeHtml(treatmentLabel)}</span></div>
-    </div>
-    <div class="info-box">
-      <h3>Заметки врача</h3>
-      <p style="font-size:13px;color:#374151;line-height:1.6">\${escapeHtml(patient.notes || 'Нет заметок')}</p>
-    </div>
-  </div>
-
-  <!-- VISITS TABLE -->
-  <div class="section">
-    <div class="section-title">📋 История посещений (\${visits.length})</div>
-    <table>
-      <thead><tr>
-        <th style="width:110px">Дата</th>
-        <th>Процедуры</th>
-        <th style="width:130px;text-align:right">Стоимость</th>
-      </tr></thead>
-      <tbody>\${visitsRows}</tbody>
-    </table>
-  </div>
-
-  <!-- FOOTER -->
-  <div class="footer">
-    <span>Клиника Safia Dent · Доктор Шукуров Азам</span>
-    <span>Сформировано: \${new Date().toLocaleDateString('ru-RU', {day:'2-digit',month:'long',year:'numeric'})}</span>
-  </div>
-</div>
-</body>
-</html>`;
-
-        // Render to image
-        const iframe = document.createElement('iframe');
-        iframe.style.position = 'fixed';
-        iframe.style.left = '-9999px';
-        iframe.style.top = '-9999px';
-        iframe.style.width = '800px';
-        iframe.style.height = '1400px';
-        document.body.appendChild(iframe);
-
-        const doc = iframe.contentWindow.document;
-        doc.open();
-        doc.write(html);
-        doc.close();
-
-        // Wait a bit for font loading and rendering
-        await new Promise(resolve => setTimeout(resolve, 800));
-
-        // Adjust iframe height to fit content fully without scrolling
-        const body = doc.body;
-        const htmlElement = doc.documentElement;
-        const height = Math.max(body.scrollHeight, body.offsetHeight, htmlElement.clientHeight, htmlElement.scrollHeight, htmlElement.offsetHeight);
-        iframe.style.height = height + 'px';
-
-        const element = doc.querySelector('.page');
-
-        if (typeof html2canvas === 'undefined') {
-            throw new Error('Библиотека html2canvas не загружена. Проверьте подключение к интернету.');
-        }
-
-        const canvas = await html2canvas(element, {
-            useCORS: true,
-            scale: 2, // High resolution
-            backgroundColor: '#ffffff'
-        });
-
-        document.body.removeChild(iframe);
-
-        // Convert to Blob
-        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-        const fileName = `Safia_Dent_${patient.firstName}_${patient.lastName}.png`;
-        const file = new File([blob], fileName, { type: 'image/png' });
-
-        // Share via Web Share API if supported
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-            await navigator.share({
-                files: [file],
-                title: `Медицинская карта: ${patient.firstName} ${patient.lastName}`,
-                text: `Отчёт клиники Safia Dent для пациента ${patient.firstName} ${patient.lastName}`
-            });
-            showToast('Отчёт успешно отправлен');
-        } else {
-            // Fallback: Open image in photo viewer
-            const dataUrl = canvas.toDataURL('image/png');
-            openPhotoViewer(dataUrl);
-            showToast('Удерживайте палец на фото, чтобы сохранить его');
-        }
-    } catch (err) {
-        console.error(err);
-        showToast('Ошибка при генерации изображения');
+// Auto-sync every 2 hours
+function startSyncInterval() {
+  if (syncInterval) clearInterval(syncInterval);
+  syncInterval = setInterval(() => {
+    if (!navigator.onLine || !currentProfile) return;
+    if (currentProfile.role !== 'admin') {
+      loadDashboard();
+      loadNotifications();
+      checkAndGenerateNotifications();
     }
+  }, 2 * 60 * 60 * 1000);
 }
 
-// ===== Stats Page =====
-function showStats() {
-    navigateTo('page-patients');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+// ============================================================
+// FORGOT PASSWORD MODAL
+// ============================================================
+function showForgotModal() {
+  document.getElementById('forgot-modal').classList.remove('hidden');
+}
+function closeForgotModal(e) {
+  if (e.target === document.getElementById('forgot-modal')) {
+    document.getElementById('forgot-modal').classList.add('hidden');
+  }
+}
+function closeForgotModalBtn() {
+  document.getElementById('forgot-modal').classList.add('hidden');
 }
 
-// ===== Photo Viewer =====
-function openPhotoViewer(src) {
-    const img = document.getElementById('photo-viewer-img');
-    img.src = src;
-    const dl = document.getElementById('photo-viewer-download');
-    if (dl) {
-        dl.href = src;
-        dl.style.display = 'inline-block';
+// ============================================================
+// TOGGLE PASSWORD
+// ============================================================
+function togglePassword(inputId, btn) {
+  const input = document.getElementById(inputId);
+  if (input.type === 'password') { input.type = 'text'; btn.textContent = '🙈'; }
+  else { input.type = 'password'; btn.textContent = '👁'; }
+}
+
+// ============================================================
+// ADMIN PANEL
+// ============================================================
+async function loadAdminDashboard() {
+  const { data: dentists, error } = await sb
+    .from('profiles')
+    .select('*')
+    .eq('role', 'dentist')
+    .order('created_at', { ascending: false });
+
+  if (error) { showToast('Ошибка загрузки: ' + error.message, 'error'); return; }
+
+  const total   = dentists?.length || 0;
+  const active  = dentists?.filter(d => !d.is_blocked).length || 0;
+  const blocked = dentists?.filter(d => d.is_blocked).length || 0;
+
+  document.getElementById('admin-total-dentists').textContent   = total;
+  document.getElementById('admin-active-dentists').textContent  = active;
+  document.getElementById('admin-blocked-dentists').textContent = blocked;
+
+  renderDentistsList(dentists || []);
+}
+
+function renderDentistsList(dentists) {
+  const container = document.getElementById('admin-dentists-list');
+  if (!dentists.length) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div style="font-size:48px;margin-bottom:16px">👨‍⚕️</div>
+        <p>Нет стоматологов</p>
+        <p style="font-size:12px;margin-top:8px;color:var(--text-muted)">Нажмите «Добавить» чтобы создать первого</p>
+      </div>`;
+    return;
+  }
+  container.innerHTML = dentists.map(d => `
+    <div class="dentist-card ${d.is_blocked ? 'blocked' : ''}" id="dcard-${d.id}">
+      <div class="dentist-avatar">${getInitials(d.full_name || d.email)}</div>
+      <div class="dentist-info">
+        <div class="dentist-name">${d.full_name || 'Без имени'}</div>
+        <div class="dentist-email">${d.email}</div>
+        <span class="dentist-status ${d.is_blocked ? 'blocked' : 'active'}">
+          ${d.is_blocked ? '🚫 Заблокирован' : '✅ Активен'}
+        </span>
+      </div>
+      <div class="dentist-actions">
+        <button class="btn-danger" onclick="toggleBlockDentist('${d.id}',${d.is_blocked})">
+          ${d.is_blocked ? 'Разблокировать' : 'Заблокировать'}
+        </button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function toggleBlockDentist(dentistId, isCurrentlyBlocked) {
+  const { error } = await sb
+    .from('profiles')
+    .update({ is_blocked: !isCurrentlyBlocked })
+    .eq('id', dentistId);
+  if (error) { showToast('Ошибка: ' + error.message, 'error'); return; }
+  showToast(isCurrentlyBlocked ? 'Стоматолог разблокирован' : 'Стоматолог заблокирован', 'success');
+  loadAdminDashboard();
+}
+
+function adminNavTo(tab) {
+  if (tab === 'home') { showPage('page-admin'); loadAdminDashboard(); }
+}
+
+function showAddDentistPage() {
+  showPage('page-add-dentist');
+  document.getElementById('add-dentist-form').reset();
+  document.getElementById('add-dentist-error').classList.add('hidden');
+}
+
+function showAdminPage() {
+  showPage('page-admin');
+  loadAdminDashboard();
+}
+
+// NOTE: Adding dentist creates a Supabase Auth user.
+// After adding, admin needs to log back in.
+async function handleAddDentist(e) {
+  e.preventDefault();
+  const name     = document.getElementById('dentist-name').value.trim();
+  const email    = document.getElementById('dentist-email').value.trim().toLowerCase();
+  const password = document.getElementById('dentist-password').value;
+  const phone    = document.getElementById('dentist-phone').value.trim();
+  const errEl    = document.getElementById('add-dentist-error');
+  const btn      = document.getElementById('add-dentist-btn');
+  const spinner  = document.getElementById('add-dentist-spinner');
+
+  errEl.classList.add('hidden');
+  btn.disabled = true;
+  spinner.classList.remove('hidden');
+
+  try {
+    // Sign up the new dentist
+    const { data: signData, error: signErr } = await sb.auth.signUp({ email, password });
+    if (signErr) throw new Error('Ошибка создания аккаунта: ' + signErr.message);
+
+    const newUserId = signData.user?.id;
+    if (!newUserId) throw new Error('Не удалось создать пользователя. Попробуйте снова.');
+
+    // Upsert profile with dentist role
+    const { error: profErr } = await sb.from('profiles').upsert({
+      id:         newUserId,
+      email,
+      full_name:  name,
+      phone:      phone || null,
+      role:       'dentist',
+      is_blocked: false
+    });
+
+    if (profErr) throw new Error('Профиль создан, но ошибка при сохранении данных: ' + profErr.message);
+
+    showToast('Стоматолог добавлен! Войдите снова как администратор.', 'success');
+
+    // Sign admin back out, then redirect to login
+    await sb.auth.signOut();
+    currentUser = null;
+    currentProfile = null;
+    showPage('page-login');
+    showToast('Войдите как администратор снова', '');
+
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.classList.remove('hidden');
+  } finally {
+    btn.disabled = false;
+    spinner.classList.add('hidden');
+  }
+}
+
+// ============================================================
+// DENTIST DASHBOARD
+// ============================================================
+function updateDentistHeader() {
+  if (!currentProfile) return;
+  const name     = currentProfile.full_name || currentUser.email.split('@')[0];
+  const initials = getInitials(name);
+
+  document.getElementById('dentist-display-name').textContent = name.split(' ')[0];
+  document.getElementById('header-avatar').textContent        = initials;
+  document.getElementById('menu-avatar').textContent          = initials;
+  document.getElementById('menu-user-name').textContent       = name;
+  document.getElementById('menu-user-email').textContent      = currentUser.email;
+
+  document.getElementById('settings-name').value  = currentProfile.full_name || '';
+  document.getElementById('settings-phone').value = currentProfile.phone || '';
+}
+
+async function loadDashboard() {
+  if (!currentProfile) return;
+  try {
+    const { data: patients, error } = await sb
+      .from('patients')
+      .select('*, visits(id, visit_date, amount)')
+      .eq('dentist_id', currentProfile.id)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    const total = patients?.length || 0;
+    document.getElementById('total-patients-count').textContent  = total;
+    document.getElementById('patients-count-badge').textContent  = total;
+
+    // today count
+    const today = new Date().toISOString().slice(0, 10);
+    let todayCount = 0;
+    patients?.forEach(p => {
+      p.visits?.forEach(v => { if (v.visit_date === today) todayCount++; });
+    });
+    document.getElementById('today-appointments-count').textContent = todayCount;
+
+    renderPatientsList(patients || []);
+  } catch (err) {
+    showToast('Ошибка загрузки: ' + err.message, 'error');
+  }
+}
+
+function renderPatientsList(patients) {
+  const container = document.getElementById('patients-list');
+  if (!patients.length) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div style="font-size:56px;margin-bottom:16px;filter:drop-shadow(0 0 20px rgba(59,130,246,.3))">🦷</div>
+        <p style="font-size:16px;font-weight:600;color:var(--text-secondary);margin-bottom:8px">Нет пациентов</p>
+        <p style="font-size:13px;color:var(--text-muted)">Нажмите «+» чтобы добавить первого</p>
+      </div>`;
+    return;
+  }
+
+  window._allPatients = patients;
+
+  container.innerHTML = patients.map((p, idx) => {
+    const totalAmt   = p.total_amount || 0;
+    const colorClass = `color-${idx % 8}`;
+    const daysAgo    = p.last_visit_date ? getDaysAgo(p.last_visit_date) : null;
+
+    return `
+      <div class="patient-card" onclick="openPatientDetail('${p.id}')">
+        <div class="patient-avatar ${colorClass}">${getInitials(p.name)}</div>
+        <div class="patient-info">
+          <div class="patient-name">${p.name}</div>
+          <div class="patient-sub">📞 ${p.phone || '—'} ${p.age ? '• ' + p.age + ' лет' : ''}</div>
+        </div>
+        <div class="patient-meta">
+          <div class="patient-amount">${formatMoney(totalAmt)}</div>
+          <div class="patient-date">${daysAgo !== null ? formatDaysAgo(daysAgo) : 'Нет визитов'}</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ============================================================
+// NAV
+// ============================================================
+function dentistNavTo(tab) {
+  if (tab === 'home') {
+    showPage('page-dashboard');
+    document.querySelectorAll('#page-dashboard .nav-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('nav-home')?.classList.add('active');
+  } else if (tab === 'settings') {
+    showPage('page-settings');
+    loadMyServices();
+  }
+}
+
+// ============================================================
+// SEARCH
+// ============================================================
+function searchPatients(query) {
+  const clearBtn  = document.getElementById('search-clear');
+  const resultsEl = document.getElementById('search-results');
+
+  if (!query.trim()) { clearSearch(); return; }
+  clearBtn.classList.remove('hidden');
+
+  const patients = window._allPatients || [];
+  const q        = query.toLowerCase();
+  const matches  = patients.filter(p =>
+    p.name?.toLowerCase().includes(q) || (p.phone || '').includes(q)
+  );
+
+  if (matches.length) {
+    resultsEl.innerHTML = matches.map((p, idx) => `
+      <div class="patient-card" onclick="openPatientDetail('${p.id}')"
+        style="border-radius:0;border-left:none;border-right:none;border-top:none;">
+        <div class="patient-avatar color-${idx % 8}">${getInitials(p.name)}</div>
+        <div class="patient-info">
+          <div class="patient-name">${p.name}</div>
+          <div class="patient-sub">📞 ${p.phone || '—'}</div>
+        </div>
+        <div class="patient-meta">
+          <div class="patient-amount">${formatMoney(p.total_amount)}</div>
+        </div>
+      </div>`).join('');
+  } else {
+    resultsEl.innerHTML = '<div class="empty-state" style="padding:20px;">Пациентов не найдено</div>';
+  }
+  resultsEl.classList.remove('hidden');
+}
+
+function clearSearch() {
+  document.getElementById('patient-search').value = '';
+  document.getElementById('search-clear').classList.add('hidden');
+  document.getElementById('search-results').classList.add('hidden');
+}
+
+// ============================================================
+// PROFILE MENU
+// ============================================================
+function showProfileMenu() {
+  document.getElementById('profile-menu').classList.remove('hidden');
+  document.getElementById('profile-overlay').classList.remove('hidden');
+}
+function hideProfileMenu() {
+  document.getElementById('profile-menu').classList.add('hidden');
+  document.getElementById('profile-overlay').classList.add('hidden');
+}
+
+// ============================================================
+// NOTIFICATIONS
+// ============================================================
+async function checkAndGenerateNotifications() {
+  if (!currentProfile) return;
+
+  const sixMonthsAgo = new Date();
+  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+  const sixMonthsAgoStr = sixMonthsAgo.toISOString().slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
+
+  const { data: patients } = await sb
+    .from('patients')
+    .select('id, name, last_visit_date, last_notified_date')
+    .eq('dentist_id', currentProfile.id)
+    .not('last_visit_date', 'is', null)
+    .lt('last_visit_date', sixMonthsAgoStr);
+
+  if (!patients?.length) return;
+
+  for (const p of patients) {
+    // Skip if already notified this month
+    const thisMonth = today.slice(0, 7);
+    if (p.last_notified_date?.slice(0, 7) === thisMonth) continue;
+
+    // Check if unread notification already exists
+    const { data: existing } = await sb
+      .from('notifications')
+      .select('id')
+      .eq('dentist_id', currentProfile.id)
+      .eq('patient_id', p.id)
+      .maybeSingle();
+
+    if (existing) continue;
+
+    await sb.from('notifications').insert({
+      dentist_id: currentProfile.id,
+      patient_id: p.id,
+      message: `Пациент ${p.name} был у вас более 6 месяцев назад. Рекомендуем связаться!`
+    });
+
+    await sb.from('patients')
+      .update({ last_notified_date: today })
+      .eq('id', p.id);
+  }
+}
+
+async function loadNotifications() {
+  if (!currentProfile) return;
+
+  const { data: notifs } = await sb
+    .from('notifications')
+    .select('*, patients(name, phone, last_visit_date)')
+    .eq('dentist_id', currentProfile.id)
+    .order('created_at', { ascending: false });
+
+  const count = notifs?.length || 0;
+  const badge = document.getElementById('notif-badge');
+  if (count > 0) { badge.textContent = count > 9 ? '9+' : count; badge.classList.remove('hidden'); }
+  else { badge.classList.add('hidden'); }
+
+  const list = document.getElementById('notif-list');
+  if (!notifs?.length) {
+    list.innerHTML = '<div class="empty-state">Нет уведомлений</div>';
+    return;
+  }
+
+  list.innerHTML = notifs.map(n => `
+    <div class="notif-item" onclick="openNotifDetail('${n.id}','${n.patient_id}')">
+      <div class="notif-item-icon">🔔</div>
+      <div>
+        <div class="notif-item-text">${n.message}</div>
+        <div class="notif-item-time">${formatDate(n.created_at)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function toggleNotifications() {
+  const panel = document.getElementById('notifications-panel');
+  panel.classList.toggle('hidden');
+  if (!panel.classList.contains('hidden')) loadNotifications();
+}
+
+async function openNotifDetail(notifId, patientId) {
+  notifCurrentId = notifId;
+  document.getElementById('notifications-panel').classList.add('hidden');
+
+  const { data: patient } = await sb
+    .from('patients')
+    .select('name, phone, last_visit_date')
+    .eq('id', patientId)
+    .single();
+
+  const { data: notif } = await sb
+    .from('notifications')
+    .select('message')
+    .eq('id', notifId)
+    .single();
+
+  document.getElementById('notif-detail-name').textContent  = patient?.name || '—';
+  document.getElementById('notif-detail-phone').textContent = patient?.phone || '—';
+  document.getElementById('notif-detail-date').textContent  = patient?.last_visit_date
+    ? 'Последний визит: ' + formatDateShort(patient.last_visit_date)
+    : 'Данных нет';
+  document.getElementById('notif-detail-msg').textContent   = notif?.message || '';
+
+  document.getElementById('notif-detail-modal').classList.remove('hidden');
+}
+
+function closeNotifDetail(e) {
+  if (e.target === document.getElementById('notif-detail-modal')) closeNotifDetailBtn();
+}
+
+async function closeNotifDetailBtn() {
+  document.getElementById('notif-detail-modal').classList.add('hidden');
+  if (notifCurrentId) {
+    await sb.from('notifications').delete().eq('id', notifCurrentId);
+    notifCurrentId = null;
+    loadNotifications();
+  }
+}
+
+// ============================================================
+// ADD PATIENT
+// ============================================================
+function showAddPatientPage() {
+  const now   = new Date();
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+    .toISOString().slice(0, 16);
+
+  document.getElementById('add-patient-form').reset();
+  document.getElementById('patient-visit-date').value     = local;
+  document.getElementById('services-container').innerHTML  = '';
+  document.getElementById('add-patient-error').classList.add('hidden');
+  document.getElementById('total-wrap').style.display     = 'none';
+
+  showPage('page-add-patient');
+  checkServicesAvailable();
+}
+
+async function checkServicesAvailable() {
+  if (!currentProfile) return;
+  const { data: services } = await sb
+    .from('services')
+    .select('*')
+    .eq('dentist_id', currentProfile.id);
+
+  myServices = services || [];
+  const noMsg = document.getElementById('no-services-msg');
+  const addBtn = document.querySelector('.btn-add-service');
+
+  if (!myServices.length) {
+    noMsg.style.display = 'block';
+    if (addBtn) addBtn.style.display = 'none';
+  } else {
+    noMsg.style.display = 'none';
+    if (addBtn) addBtn.style.display = 'inline-flex';
+  }
+}
+
+function addServiceRow() {
+  if (!myServices.length) { showToast('Сначала добавьте услуги в настройках', 'error'); return; }
+
+  const container = document.getElementById('services-container');
+  const rowId     = 'svc-row-' + Date.now();
+  const row       = document.createElement('div');
+  row.className   = 'service-row';
+  row.id          = rowId;
+
+  const options = myServices.map(s =>
+    `<option value="${s.id}" data-price="${s.price}">${s.name} — ${formatMoney(s.price)}</option>`
+  ).join('');
+
+  row.innerHTML = `
+    <select class="form-input service-select" onchange="updateTotal()">${options}</select>
+    <input type="number" class="form-input service-qty" value="1" min="1" max="99"
+      onchange="updateTotal()" style="width:60px;text-align:center;" />
+    <button type="button" class="service-remove" onclick="removeServiceRow('${rowId}')">✕</button>
+  `;
+
+  container.appendChild(row);
+  updateTotal();
+  document.getElementById('total-wrap').style.display = 'flex';
+}
+
+function removeServiceRow(rowId) {
+  const row = document.getElementById(rowId);
+  if (row) row.remove();
+  updateTotal();
+  if (!document.getElementById('services-container').children.length) {
+    document.getElementById('total-wrap').style.display = 'none';
+  }
+}
+
+function updateTotal() {
+  let total = 0;
+  document.querySelectorAll('#services-container .service-row').forEach(row => {
+    const select = row.querySelector('.service-select');
+    const qty    = parseInt(row.querySelector('.service-qty').value) || 1;
+    const price  = parseFloat(select.selectedOptions[0]?.dataset.price || 0);
+    total += price * qty;
+  });
+  document.getElementById('services-total').textContent = formatMoney(total);
+}
+
+async function handleAddPatient(e) {
+  e.preventDefault();
+  if (!navigator.onLine) { showNoInternet(); return; }
+
+  const name      = document.getElementById('patient-name').value.trim();
+  const age       = document.getElementById('patient-age').value;
+  const phone     = document.getElementById('patient-phone').value.trim();
+  const visitDate = document.getElementById('patient-visit-date').value;
+  const notes     = document.getElementById('patient-notes').value.trim();
+  const errEl     = document.getElementById('add-patient-error');
+  const btn       = document.getElementById('add-patient-btn');
+  const spinner   = document.getElementById('add-patient-spinner');
+
+  errEl.classList.add('hidden');
+  btn.disabled = true;
+  spinner.classList.remove('hidden');
+
+  try {
+    const visitDateOnly = visitDate
+      ? new Date(visitDate).toISOString().slice(0, 10)
+      : new Date().toISOString().slice(0, 10);
+    const visitTime = visitDate
+      ? new Date(visitDate).toTimeString().slice(0, 5)
+      : null;
+
+    // Collect services
+    const serviceRows  = document.querySelectorAll('#services-container .service-row');
+    let totalAmount    = 0;
+    const selectedSvcs = [];
+
+    serviceRows.forEach(row => {
+      const select  = row.querySelector('.service-select');
+      const qty     = parseInt(row.querySelector('.service-qty').value) || 1;
+      const price   = parseFloat(select.selectedOptions[0]?.dataset.price || 0);
+      const svcName = (select.selectedOptions[0]?.text || '').split(' — ')[0];
+      totalAmount  += price * qty;
+      selectedSvcs.push({ id: select.value, name: svcName, price, qty });
+    });
+
+    // Check if patient exists (same phone, same dentist)
+    let patientId;
+    const { data: existing } = await sb
+      .from('patients')
+      .select('id, total_amount')
+      .eq('dentist_id', currentProfile.id)
+      .eq('phone', phone)
+      .maybeSingle();
+
+    if (existing) {
+      patientId = existing.id;
+      await sb.from('patients').update({
+        name,
+        age:             age ? parseInt(age) : null,
+        total_amount:    (parseFloat(existing.total_amount) || 0) + totalAmount,
+        last_visit_date: visitDateOnly
+      }).eq('id', patientId);
+    } else {
+      const { data: newPat, error: pErr } = await sb
+        .from('patients')
+        .insert({
+          dentist_id:      currentProfile.id,
+          name,
+          age:             age ? parseInt(age) : null,
+          phone:           phone || null,
+          total_amount:    totalAmount,
+          last_visit_date: visitDateOnly
+        })
+        .select()
+        .single();
+
+      if (pErr) throw new Error('Ошибка: ' + pErr.message);
+      patientId = newPat.id;
     }
-    document.getElementById('photo-viewer').classList.remove('hidden');
-    document.body.style.overflow = 'hidden';
-}
-function closePhotoViewer() {
-    document.getElementById('photo-viewer').classList.add('hidden');
-    document.getElementById('photo-viewer-img').src = '';
-    document.body.style.overflow = '';
+
+    // Create visit
+    const { error: vErr } = await sb.from('visits').insert({
+      patient_id:  patientId,
+      dentist_id:  currentProfile.id,
+      services:    selectedSvcs,
+      amount:      totalAmount,
+      visit_date:  visitDateOnly,
+      visit_time:  visitTime
+    });
+
+    if (vErr) throw new Error('Ошибка визита: ' + vErr.message);
+
+    showToast('Пациент сохранён!', 'success');
+    showPage('page-dashboard');
+    loadDashboard();
+
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.classList.remove('hidden');
+  } finally {
+    btn.disabled = false;
+    spinner.classList.add('hidden');
+  }
 }
 
-// ===== Dialog =====
-function showDialog(title, message, onConfirm) {
-    document.getElementById('dialog-title').textContent = title;
-    document.getElementById('dialog-message').textContent = message;
-    const confirmBtn = document.getElementById('dialog-confirm-btn');
-    confirmBtn.onclick = () => { closeDialog(); onConfirm(); };
-    document.getElementById('confirm-dialog').classList.remove('hidden');
-}
-function closeDialog() {
-    document.getElementById('confirm-dialog').classList.add('hidden');
+// ============================================================
+// PATIENT DETAIL
+// ============================================================
+async function openPatientDetail(patientId) {
+  showPage('page-patient-detail');
+  document.getElementById('detail-name').textContent = 'Загрузка...';
+  document.getElementById('detail-visits-list').innerHTML =
+    '<div class="loading-state"><div class="loading-spinner"></div></div>';
+
+  const { data: patient, error } = await sb
+    .from('patients')
+    .select('*, visits(id, visit_date, visit_time, amount, services)')
+    .eq('id', patientId)
+    .single();
+
+  if (error || !patient) {
+    showToast('Ошибка загрузки', 'error');
+    showPage('page-dashboard');
+    return;
+  }
+
+  currentPatient = patient;
+
+  const initials = getInitials(patient.name);
+  document.getElementById('detail-avatar').textContent      = initials;
+  document.getElementById('detail-name').textContent        = patient.name;
+  document.getElementById('detail-phone').textContent       = '📞 ' + (patient.phone || '—');
+  document.getElementById('detail-age-tag').textContent     = patient.age ? patient.age + ' лет' : 'Возраст не указан';
+
+  const daysAgo = patient.last_visit_date ? getDaysAgo(patient.last_visit_date) : null;
+  document.getElementById('detail-last-visit-tag').textContent =
+    daysAgo !== null ? formatDaysAgo(daysAgo) : 'Нет визитов';
+
+  document.getElementById('detail-total-visits').textContent = patient.visits?.length || 0;
+  document.getElementById('detail-total-amount').textContent  = formatMoney(patient.total_amount);
+
+  renderVisitsList(patient.visits || []);
 }
 
-// ===== Toast =====
-function showToast(message) {
-    const toast = document.getElementById('toast');
-    document.getElementById('toast-message').textContent = message;
-    toast.classList.remove('hidden');
-    toast.classList.add('show');
-    setTimeout(() => { toast.classList.remove('show'); toast.classList.add('hidden'); }, 2500);
+function renderVisitsList(visits) {
+  const container = document.getElementById('detail-visits-list');
+  if (!visits.length) {
+    container.innerHTML = '<div class="empty-state">Нет записей о визитах</div>';
+    return;
+  }
+
+  const sorted = [...visits].sort((a, b) => new Date(b.visit_date) - new Date(a.visit_date));
+
+  container.innerHTML = sorted.map(v => {
+    const services     = Array.isArray(v.services) ? v.services : [];
+    const servicesHtml = services.map(s => `
+      <div class="visit-service-row">
+        <span class="svc-name">${s.name}${s.qty > 1 ? ' x' + s.qty : ''}</span>
+        <span class="svc-price">${formatMoney(s.price * (s.qty || 1))}</span>
+      </div>`).join('');
+
+    return `
+      <div class="visit-card">
+        <div class="visit-date">📅 ${formatDateShort(v.visit_date)}${v.visit_time ? ' в ' + v.visit_time : ''}</div>
+        ${servicesHtml ? `<div class="visit-services">${servicesHtml}</div>` : ''}
+        <div class="visit-total">
+          <span>Итого</span>
+          <span style="color:var(--success)">${formatMoney(v.amount)}</span>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function newAppointmentForPatient() {
+  if (!currentPatient) return;
+  showAddPatientPage();
+  setTimeout(() => {
+    document.getElementById('patient-name').value  = currentPatient.name;
+    document.getElementById('patient-phone').value = currentPatient.phone || '';
+    if (currentPatient.age) document.getElementById('patient-age').value = currentPatient.age;
+  }, 50);
+}
+
+async function confirmDeletePatient() {
+  if (!currentPatient) return;
+  if (!confirm(`Удалить пациента "${currentPatient.name}"?\nВсе данные будут удалены.`)) return;
+
+  const { error } = await sb.from('patients').delete().eq('id', currentPatient.id);
+  if (error) { showToast('Ошибка удаления: ' + error.message, 'error'); return; }
+
+  showToast('Пациент удалён', 'success');
+  showPage('page-dashboard');
+  loadDashboard();
+}
+
+// ============================================================
+// SETTINGS — SERVICES
+// ============================================================
+async function loadMyServices() {
+  if (!currentProfile) return;
+  const { data: services } = await sb
+    .from('services')
+    .select('*')
+    .eq('dentist_id', currentProfile.id)
+    .order('created_at', { ascending: false });
+
+  myServices = services || [];
+  renderMyServices(myServices);
+}
+
+function renderMyServices(services) {
+  const container = document.getElementById('my-services-list');
+  if (!services.length) {
+    container.innerHTML = `
+      <div class="empty-state" style="padding:20px 0;">
+        <p>Нет услуг</p>
+        <p style="font-size:12px;margin-top:4px;color:var(--text-muted)">Добавьте услуги ниже</p>
+      </div>`;
+    return;
+  }
+  container.innerHTML = services.map(s => `
+    <div class="my-service-item">
+      <div class="my-service-name">🦷 ${s.name}</div>
+      <div class="my-service-price">${formatMoney(s.price)}</div>
+      <button class="my-service-delete" onclick="deleteService('${s.id}')" title="Удалить">✕</button>
+    </div>`).join('');
+}
+
+async function addMyService() {
+  const name  = document.getElementById('new-service-name').value.trim();
+  const price = parseFloat(document.getElementById('new-service-price').value);
+
+  if (!name)                   { showToast('Введите название услуги', 'error'); return; }
+  if (isNaN(price) || price < 0) { showToast('Введите корректную цену', 'error'); return; }
+
+  const { error } = await sb.from('services').insert({
+    dentist_id: currentProfile.id, name, price
+  });
+  if (error) { showToast('Ошибка: ' + error.message, 'error'); return; }
+
+  document.getElementById('new-service-name').value  = '';
+  document.getElementById('new-service-price').value = '';
+  showToast('Услуга добавлена!', 'success');
+  loadMyServices();
+}
+
+async function deleteService(serviceId) {
+  if (!confirm('Удалить эту услугу?')) return;
+  const { error } = await sb.from('services').delete().eq('id', serviceId);
+  if (error) { showToast('Ошибка: ' + error.message, 'error'); return; }
+  showToast('Услуга удалена', 'success');
+  loadMyServices();
+}
+
+async function saveProfile() {
+  const name  = document.getElementById('settings-name').value.trim();
+  const phone = document.getElementById('settings-phone').value.trim();
+  if (!name) { showToast('Введите ваше имя', 'error'); return; }
+
+  const { error } = await sb.from('profiles')
+    .update({ full_name: name, phone: phone || null })
+    .eq('id', currentProfile.id);
+
+  if (error) { showToast('Ошибка: ' + error.message, 'error'); return; }
+
+  currentProfile.full_name = name;
+  currentProfile.phone     = phone;
+  updateDentistHeader();
+  showToast('Профиль сохранён!', 'success');
+}
+
+// ============================================================
+// HELPERS
+// ============================================================
+function getInitials(name) {
+  if (!name) return '?';
+  const parts = name.trim().split(' ').filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return name.substring(0, 2).toUpperCase();
+}
+
+function getDaysAgo(dateStr) {
+  const date = new Date(dateStr);
+  const now  = new Date();
+  return Math.floor((now - date) / (1000 * 60 * 60 * 24));
+}
+
+function formatDaysAgo(days) {
+  if (days === 0) return 'Сегодня';
+  if (days === 1) return 'Вчера';
+  if (days < 7)   return `${days} дн. назад`;
+  if (days < 30)  return `${Math.floor(days / 7)} нед. назад`;
+  if (days < 365) return `${Math.floor(days / 30)} мес. назад`;
+  return `${Math.floor(days / 365)} г. назад`;
 }
 
 function formatDate(dateStr) {
-    if (!dateStr) return '';
-    const str = String(dateStr).trim();
-    if (str.length === 4 && !isNaN(parseInt(str))) {
-        return str + ' г.';
-    }
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return new Date(dateStr).toLocaleString('ru-RU', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit'
+  });
 }
 
-function calculateAge(birthDate) {
-    if (!birthDate) return 0;
-    const str = String(birthDate).trim();
-    const birthYear = parseInt(str);
-    if (!isNaN(birthYear) && str.length === 4) {
-        return new Date().getFullYear() - birthYear;
-    }
-    const today = new Date();
-    const birth = new Date(birthDate);
-    let age = today.getFullYear() - birth.getFullYear();
-    const m = today.getMonth() - birth.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
-    return age;
+function formatDateShort(dateStr) {
+  return new Date(dateStr + 'T00:00:00').toLocaleDateString('ru-RU', {
+    day: '2-digit', month: '2-digit', year: 'numeric'
+  });
 }
 
-function formatCurrency(amount) {
-    return new Intl.NumberFormat('ru-RU').format(amount) + ' сум';
+function formatMoney(amount) {
+  return (parseFloat(amount) || 0).toLocaleString('ru-RU') + ' сом.';
 }
 
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+// ===== TOAST =====
+let toastTimeout = null;
+function showToast(message, type = '') {
+  const toast = document.getElementById('toast');
+  toast.textContent = message;
+  toast.className   = 'toast' + (type ? ' ' + type : '');
+  toast.classList.remove('hidden');
+  if (toastTimeout) clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(() => toast.classList.add('hidden'), 3500);
 }
