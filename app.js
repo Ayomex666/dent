@@ -266,8 +266,7 @@ function showAdminPage() {
   loadAdminDashboard();
 }
 
-// NOTE: Adding dentist creates a Supabase Auth user.
-// After adding, admin needs to log back in.
+// NOTE: Adding dentist creates a Supabase Auth user without overriding admin session.
 async function handleAddDentist(e) {
   e.preventDefault();
   const name     = document.getElementById('dentist-name').value.trim();
@@ -283,14 +282,32 @@ async function handleAddDentist(e) {
   spinner.classList.remove('hidden');
 
   try {
-    // Sign up the new dentist
-    const { data: signData, error: signErr } = await sb.auth.signUp({ email, password });
+    // Create an isolated Supabase client so admin's active session is NOT overwritten/signed out
+    const tempAuthClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false
+      }
+    });
+
+    // Sign up the new user
+    const { data: signData, error: signErr } = await tempAuthClient.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          full_name: name,
+          role: 'dentist'
+        }
+      }
+    });
     if (signErr) throw new Error('Ошибка создания аккаунта: ' + signErr.message);
 
     const newUserId = signData.user?.id;
     if (!newUserId) throw new Error('Не удалось создать пользователя. Попробуйте снова.');
 
-    // Upsert profile with dentist role
+    // Upsert profile with dentist role using admin's active connection
     const { error: profErr } = await sb.from('profiles').upsert({
       id:         newUserId,
       email,
@@ -302,14 +319,10 @@ async function handleAddDentist(e) {
 
     if (profErr) throw new Error('Профиль создан, но ошибка при сохранении данных: ' + profErr.message);
 
-    showToast('Стоматолог добавлен! Войдите снова как администратор.', 'success');
+    showToast('Стоматолог успешно добавлен!', 'success');
 
-    // Sign admin back out, then redirect to login
-    await sb.auth.signOut();
-    currentUser = null;
-    currentProfile = null;
-    showPage('page-login');
-    showToast('Войдите как администратор снова', '');
+    // Return to admin page and refresh list immediately without logging admin out
+    showAdminPage();
 
   } catch (err) {
     errEl.textContent = err.message;
